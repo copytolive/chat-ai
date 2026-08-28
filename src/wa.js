@@ -6,8 +6,7 @@ function envBool(name, fallback = false) { const raw = process.env[name]; if (ra
 export function extractText(message) { const content = message?.message; if (!content) return ''; return (content.conversation || content.extendedTextMessage?.text || content.imageMessage?.caption || content.videoMessage?.caption || '').trim() }
 function statusCodeFromDisconnect(error) { return error?.output?.statusCode || error?.data?.statusCode || null }
 
-export function createWhatsAppService({ onMessage, logger = console, metrics, makeSocket = makeWASocket, loadAuthState = useMultiFileAuthState } = {}) {
-  const authDir = process.env.WA_AUTH_DIR || '.auth/whatsapp'
+export function createWhatsAppService({ onMessage, logger = console, metrics, makeSocket = makeWASocket, loadAuthState = useMultiFileAuthState, authDir = process.env.WA_AUTH_DIR || '.auth/whatsapp' } = {}) {
   const replyGroups = envBool('WA_REPLY_GROUPS', false)
   const allowedJids = new Set(String(process.env.WA_ALLOWED_JIDS || '').split(',').map((value) => value.trim()).filter(Boolean))
   const dedupe = new Map(); const dedupeTtlMs = Number(process.env.WA_DEDUPE_TTL_MS || 86_400_000)
