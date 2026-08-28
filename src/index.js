@@ -6,6 +6,7 @@ import pino from 'pino'
 import { fileURLToPath } from 'node:url'
 import { createWhatsAppService } from './wa.js'
 import { generateReply, getAIStatus } from './ai.js'
+import { createMarketingAgent } from './marketing.js'
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 const app = express()
@@ -33,10 +34,14 @@ function scannerAuth(req, res, next) {
   return next()
 }
 
+const marketing = createMarketingAgent()
 const wa = createWhatsAppService({
   logger,
   onMessage: async ({ jid, text }) => {
     logger.info({ jid }, 'Incoming WhatsApp text accepted')
+    if (marketing.isEnabled()) {
+      return marketing.process({ jid, text })
+    }
     return generateReply(text)
   },
 })
@@ -55,6 +60,7 @@ app.get('/status', scannerAuth, (_req, res) => {
     ok: true,
     whatsapp: wa.getState(),
     ai: getAIStatus(),
+    marketing: marketing.getStatus(),
   })
 })
 
@@ -78,6 +84,32 @@ app.get('/qr', scannerAuth, async (_req, res) => {
   } catch (error) {
     logger.error({ err: error }, 'QR rendering failed')
     return res.status(500).json({ ok: false, error: 'QR_RENDER_FAILED' })
+  }
+})
+
+app.post('/marketing/preview', scannerAuth, async (req, res) => {
+  if (!marketing.isEnabled()) {
+    return res.status(409).json({ ok: false, error: 'MARKETING_AGENT_DISABLED' })
+  }
+
+  const text = String(req.body?.text || '').trim().slice(0, 6000)
+  const sessionId = String(req.body?.sessionId || 'default')
+    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .slice(0, 80) || 'default'
+
+  if (!text) return res.status(400).json({ ok: false, error: 'TEXT_REQUIRED' })
+
+  try {
+    const jid = `preview:${sessionId}`
+    const reply = await marketing.process({ jid, text })
+    return res.json({
+      ok: true,
+      reply,
+      state: marketing.getSessionState(jid),
+    })
+  } catch (error) {
+    logger.error({ err: error }, 'Marketing preview failed')
+    return res.status(500).json({ ok: false, error: 'MARKETING_PREVIEW_FAILED' })
   }
 })
 

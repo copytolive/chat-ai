@@ -32,20 +32,24 @@ export function getAIStatus() {
   }
 }
 
-export async function generateReply(userText) {
+export async function completeChat(messages, { temperature = 0.2, maxReplyChars } = {}) {
   const config = getAIConfig()
   if (!config.enabled) return null
   if (!config.baseUrl || !config.model) {
     throw new Error('AI is enabled but AI_BASE_URL or AI_MODEL is missing')
   }
 
-  const maxInput = Number(process.env.MAX_INPUT_CHARS || 6000)
-  const maxReply = Number(process.env.MAX_REPLY_CHARS || 6000)
   const timeoutMs = Number(process.env.AI_TIMEOUT_MS || 60000)
-  const prompt = clampText(userText, maxInput)
-  if (!prompt) return null
+  const maxReply = Number(maxReplyChars || process.env.MAX_REPLY_CHARS || 6000)
+  const safeMessages = (Array.isArray(messages) ? messages : [])
+    .filter((message) => message && typeof message.content === 'string')
+    .map((message) => ({
+      role: ['system', 'user', 'assistant'].includes(message.role) ? message.role : 'user',
+      content: clampText(message.content, 20000),
+    }))
 
-  const systemPrompt = (process.env.SYSTEM_PROMPT || 'You are a helpful WhatsApp assistant. Reply clearly and concisely.').trim()
+  if (!safeMessages.length) return null
+
   const headers = { 'content-type': 'application/json' }
   if (config.apiKey) headers.authorization = `Bearer ${config.apiKey}`
 
@@ -54,11 +58,8 @@ export async function generateReply(userText) {
     headers,
     body: JSON.stringify({
       model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
+      messages: safeMessages,
+      temperature,
     }),
     signal: AbortSignal.timeout(timeoutMs),
   })
@@ -75,4 +76,16 @@ export async function generateReply(userText) {
   }
 
   return clampText(reply, maxReply)
+}
+
+export async function generateReply(userText) {
+  const maxInput = Number(process.env.MAX_INPUT_CHARS || 6000)
+  const prompt = clampText(userText, maxInput)
+  if (!prompt) return null
+
+  const systemPrompt = (process.env.SYSTEM_PROMPT || 'You are a helpful WhatsApp assistant. Reply clearly and concisely.').trim()
+  return completeChat([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: prompt },
+  ], { temperature: 0.2 })
 }

@@ -1,8 +1,8 @@
 {
   "name": "@copytolive/chat-ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
-  "description": "Standalone WhatsApp AI scanner/reply service recovered from the legacy OpenTrue deployment contract.",
+  "description": "Standalone WhatsApp AI scanner with staged conversation marketing agent.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -11,7 +11,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test",
-    "check": "node --check src/index.js && node --check src/wa.js && node --check src/ai.js && node --test"
+    "check": "node --check src/index.js && node --check src/wa.js && node --check src/ai.js && node --check src/marketing.js && node --test"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.23",
