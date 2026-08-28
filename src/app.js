@@ -68,7 +68,7 @@ export function createApp({ runtime = createRuntime() } = {}) {
     const ready = Boolean(ai.configured && waReady && handoffReady && control.automationEnabled && (!requireMarketing || marketingStatus.configured))
     return res.status(ready ? 200 : 503).json({ ok: ready, automationEnabled: control.automationEnabled, provider: providerName, checks: { ai: ai.configured, whatsapp: waReady, marketing: requireMarketing ? marketingStatus.configured : true, handoff: handoffReady } })
   })
-  app.get('/status', scannerAuth, (_req, res) => res.json({ ok: true, release: process.env.RELEASE_VERSION || 'dev', automation: { enabled: control.automationEnabled }, whatsapp: whatsapp.getState(), ai: getAIStatus(), marketing: marketing.getStatus(), handoff: handoff.getState(), metrics: metrics.snapshot() }))
+  app.get('/status', scannerAuth, (_req, res) => res.json({ ok: true, release: process.env.RELEASE_VERSION || 'dev', automation: { enabled: control.automationEnabled, mode: control.automationEnabled ? 'automatic' : 'paused' }, whatsapp: whatsapp.getState(), ai: getAIStatus(), marketing: marketing.getStatus(), handoff: handoff.getState(), metrics: metrics.snapshot() }))
   app.get('/metrics', scannerAuth, (_req, res) => res.json({ ok: true, metrics: metrics.snapshot() }))
   app.get('/qr', scannerAuth, async (_req, res) => {
     const qr = whatsapp.getQr?.()
@@ -83,6 +83,14 @@ export function createApp({ runtime = createRuntime() } = {}) {
     if (!text) return res.status(400).json({ ok: false, error: 'TEXT_REQUIRED' })
     try { const jid = `preview:${sessionId}`; const result = await marketing.processDetailed({ jid, text }); return res.json({ ok: true, reply: result.reply, event: result.event, state: result.state }) }
     catch (error) { logger.error({ err: error }, 'Marketing preview failed'); return res.status(500).json({ ok: false, error: 'MARKETING_PREVIEW_FAILED' }) }
+  })
+  app.get('/admin/handoffs', scannerAuth, adminAuth, (req, res) => {
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50))
+    return res.json({ ok: true, mode: handoff.getState().mode, items: handoff.listPending(limit) })
+  })
+  app.post('/admin/handoffs/:id/ack', scannerAuth, adminAuth, (req, res) => {
+    const acknowledged = handoff.acknowledge(req.params.id)
+    return res.status(acknowledged ? 200 : 404).json({ ok: acknowledged, error: acknowledged ? undefined : 'HANDOFF_NOT_FOUND' })
   })
   app.post('/admin/automation', scannerAuth, adminAuth, (req, res) => {
     if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ ok: false, error: 'BOOLEAN_ENABLED_REQUIRED' })
