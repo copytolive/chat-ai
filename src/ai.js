@@ -10,23 +10,32 @@ function clampText(value, limit) {
   return text.slice(0, limit)
 }
 
-export function getAIStatus() {
+function getAIConfig() {
   const enabled = envBool('AI_ENABLED', false)
   const baseUrl = (process.env.AI_BASE_URL || '').trim().replace(/\/+$/, '')
   const model = (process.env.AI_MODEL || '').trim()
   return {
     enabled,
-    configured: Boolean(enabled && baseUrl && model),
-    baseUrl: baseUrl || null,
-    model: model || null,
-    apiKeyConfigured: Boolean((process.env.AI_API_KEY || '').trim()),
+    baseUrl,
+    model,
+    apiKey: (process.env.AI_API_KEY || '').trim(),
+  }
+}
+
+export function getAIStatus() {
+  const config = getAIConfig()
+  return {
+    enabled: config.enabled,
+    configured: Boolean(config.enabled && config.baseUrl && config.model),
+    model: config.model || null,
+    apiKeyConfigured: Boolean(config.apiKey),
   }
 }
 
 export async function generateReply(userText) {
-  const status = getAIStatus()
-  if (!status.enabled) return null
-  if (!status.configured) {
+  const config = getAIConfig()
+  if (!config.enabled) return null
+  if (!config.baseUrl || !config.model) {
     throw new Error('AI is enabled but AI_BASE_URL or AI_MODEL is missing')
   }
 
@@ -38,14 +47,13 @@ export async function generateReply(userText) {
 
   const systemPrompt = (process.env.SYSTEM_PROMPT || 'You are a helpful WhatsApp assistant. Reply clearly and concisely.').trim()
   const headers = { 'content-type': 'application/json' }
-  const apiKey = (process.env.AI_API_KEY || '').trim()
-  if (apiKey) headers.authorization = `Bearer ${apiKey}`
+  if (config.apiKey) headers.authorization = `Bearer ${config.apiKey}`
 
-  const response = await fetch(`${status.baseUrl}/chat/completions`, {
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: status.model,
+      model: config.model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
