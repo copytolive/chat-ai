@@ -16,6 +16,7 @@ export function createHandoffService({ logger = console } = {}) {
   const configured = () => Boolean(url && secret && (!requireEncrypted || queue.encrypted))
 
   async function deliver(event) {
+    if (!url || !secret) throw new Error('Human handoff webhook is not configured')
     const body = JSON.stringify(event)
     const signature = `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`
     const response = await fetch(url, {
@@ -39,14 +40,14 @@ export function createHandoffService({ logger = console } = {}) {
     return queue.enqueue(event, { id: `handoff:${messageId || `${contactId}:${event.createdAt}`}` })
   }
 
-  function start() {
-    queue.start(async (event) => {
-      try { await deliver(event) }
-      catch (error) { logger.error?.({ error: error?.message || String(error) }, 'Human handoff delivery failed'); throw error }
-    })
+  async function handle(event) {
+    try { await deliver(event) }
+    catch (error) { logger.error?.({ error: error?.message || String(error) }, 'Human handoff delivery failed'); throw error }
   }
+  function start() { queue.start(handle) }
   function stop() { queue.stop() }
+  function flush() { return queue.drainOnce(handle) }
   function getState() { return { configured: configured(), webhookConfigured: Boolean(url && secret), encryptedQueueRequired: requireEncrypted, queue: queue.stats() } }
 
-  return { enqueue, start, stop, getState, isConfigured: configured }
+  return { enqueue, start, stop, flush, getState, isConfigured: configured }
 }
