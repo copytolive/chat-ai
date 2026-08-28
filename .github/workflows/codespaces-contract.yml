@@ -1,0 +1,33 @@
+name: codespaces-contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  direct-open:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate devcontainer and launcher syntax
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('.devcontainer/devcontainer.json','utf8'))"
+          bash -n scripts/codespace-url.sh
+          bash -n scripts/codespace-start.sh
+          ! grep -q 'openFiles' .devcontainer/devcontainer.json
+      - name: Validate deterministic forwarded scanner URL
+        env:
+          CODESPACE_NAME: stunning-xylophone-test
+          GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: app.github.dev
+        run: |
+          test "$(bash scripts/codespace-url.sh 3847 /wa-scanner/)" = "https://stunning-xylophone-test-3847.app.github.dev/wa-scanner/"
+      - name: Validate direct-open contract
+        run: |
+          grep -q 'code --open-url' scripts/codespace-start.sh
+          grep -q 'Scanner UI:' scripts/codespace-start.sh
+          grep -q 'scanner membuka halaman' docs/index.html
