@@ -51,6 +51,11 @@ export function createApp({ runtime = createRuntime() } = {}) {
   app.disable('x-powered-by')
   app.set('trust proxy', envBool('TRUST_PROXY', false) ? 1 : false)
   app.use(helmet({ contentSecurityPolicy: false }))
+  app.use((req, _res, next) => {
+    if (req.url === '/wa-scanner') req.url = '/'
+    else if (req.url.startsWith('/wa-scanner/')) req.url = req.url.slice('/wa-scanner'.length)
+    next()
+  })
   app.use(express.json({ limit: '64kb', verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer) } }))
   const webhookLimit = createRateLimit({ windowMs: 60_000, max: Number(process.env.WEBHOOK_RATE_LIMIT_PER_MINUTE || 600) })
   app.use('/webhooks', webhookLimit)
