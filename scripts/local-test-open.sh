@@ -11,27 +11,47 @@ KEY_FILE="$RUNTIME_DIR/handoff.key"
 APP_PID_FILE="$RUNTIME_DIR/app.pid"
 MOCK_PID_FILE="$RUNTIME_DIR/mock-ai.pid"
 PORT="${PORT:-3847}"
+MOCK_PORT="${MOCK_AI_PORT:-39999}"
 URL="http://127.0.0.1:${PORT}/wa-scanner/"
 
 say() { printf '\n%s\n' "$*"; }
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+port_in_use() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+stop_pidfile() {
+  local pidfile="$1" pid=""
+  [[ -s "$pidfile" ]] || return 0
+  pid="$(cat "$pidfile" 2>/dev/null || true)"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  fi
+  rm -f "$pidfile"
+}
 
-command -v git >/dev/null 2>&1 || fail "Git belum tersedia. Di macOS jalankan: xcode-select --install"
-command -v node >/dev/null 2>&1 || fail "Node.js belum tersedia. Install Node.js 20+ terlebih dahulu (Homebrew: brew install node)."
-command -v npm >/dev/null 2>&1 || fail "npm belum tersedia. Install Node.js 20+ terlebih dahulu."
+command -v git >/dev/null 2>&1 || fail "Git belum tersedia. Jalankan: xcode-select --install"
+command -v node >/dev/null 2>&1 || fail "Node.js belum tersedia. Install Node.js 20+ (brew install node)."
+command -v npm >/dev/null 2>&1 || fail "npm belum tersedia. Install Node.js 20+."
+command -v curl >/dev/null 2>&1 || fail "curl tidak tersedia."
+command -v lsof >/dev/null 2>&1 || fail "lsof tidak tersedia."
 
 NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])")"
-if [[ "$NODE_MAJOR" -lt 20 ]]; then
-  fail "Node.js terlalu lama ($(node -v)). Gunakan Node.js 20 atau lebih baru."
-fi
+[[ "$NODE_MAJOR" -ge 20 ]] || fail "Node.js terlalu lama ($(node -v)). Gunakan Node.js 20+."
+
+# Stop only processes previously launched by this test launcher.
+stop_pidfile "$APP_PID_FILE"
+stop_pidfile "$MOCK_PID_FILE"
+
+# Never mistake another local service for this scanner.
+port_in_use "$PORT" && fail "Port $PORT sedang dipakai aplikasi lain. Tutup aplikasi itu lalu jalankan lagi."
+port_in_use "$MOCK_PORT" && fail "Port $MOCK_PORT sedang dipakai aplikasi lain. Jalankan lagi dengan: MOCK_AI_PORT=40000 bash START_CHAT_AI.command"
 
 mkdir -p "$(dirname "$BASE_DIR")"
 if [[ ! -d "$BASE_DIR/.git" ]]; then
-  say "[1/5] Download CopyToLive Chat AI..."
-  git clone "$REPO_URL" "$BASE_DIR"
+  say "[1/5] Download Chat AI..."
+  git clone --depth 1 "$REPO_URL" "$BASE_DIR"
 else
-  say "[1/5] Update CopyToLive Chat AI..."
-  git -C "$BASE_DIR" fetch origin main --quiet
+  say "[1/5] Update Chat AI..."
+  git -C "$BASE_DIR" fetch origin main --depth 1 --quiet
   git -C "$BASE_DIR" checkout main --quiet
   git -C "$BASE_DIR" reset --hard origin/main --quiet
 fi
@@ -48,44 +68,21 @@ if [[ ! -s "$KEY_FILE" ]]; then
   chmod 600 "$KEY_FILE" 2>/dev/null || true
 fi
 
-# Stop stale local-test processes created by this launcher only.
-for pidfile in "$APP_PID_FILE" "$MOCK_PID_FILE"; do
-  if [[ -s "$pidfile" ]]; then
-    pid="$(cat "$pidfile" 2>/dev/null || true)"
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-      sleep 1
-    fi
-    rm -f "$pidfile"
-  fi
-done
-
 say "[3/5] Start test AI..."
-nohup env MOCK_AI_PORT=9999 node scripts/mock-ai.mjs > "$RUNTIME_DIR/mock-ai.log" 2>&1 &
+nohup env MOCK_AI_PORT="$MOCK_PORT" node scripts/mock-ai.mjs > "$RUNTIME_DIR/mock-ai.log" 2>&1 &
 echo $! > "$MOCK_PID_FILE"
+for _ in $(seq 1 30); do
+  curl -fsS "http://127.0.0.1:${MOCK_PORT}/health" >/dev/null 2>&1 && break
+  kill -0 "$(cat "$MOCK_PID_FILE")" 2>/dev/null || { tail -n 50 "$RUNTIME_DIR/mock-ai.log" >&2 || true; fail "Test AI gagal start."; }
+  sleep 0.2
+done
+kill -0 "$(cat "$MOCK_PID_FILE")" 2>/dev/null || fail "Test AI berhenti sebelum scanner start."
 
-export NODE_ENV=development
-export HOST=127.0.0.1
-export PORT="$PORT"
-export RELEASE_VERSION=local-wa-test
-export AUTOMATION_ENABLED=true
-export REQUIRE_MARKETING_FOR_READY=true
-export REQUIRE_HANDOFF_FOR_READY=true
-
-export WA_PROVIDER=baileys
-export PRODUCTION_REQUIRE_CLOUD=false
-export ALLOW_UNOFFICIAL_WA=true
-export WA_AUTH_DIR="$WA_DIR"
-export WA_REPLY_GROUPS=false
-export WA_LOG_LEVEL=warn
-
-export AI_ENABLED=true
-export AI_BASE_URL=http://127.0.0.1:9999/v1
-export AI_MODEL=local-test-agent
-export AI_API_KEY=
-
-export MARKETING_ENABLED=true
-export MARKETING_REQUIRE_KNOWLEDGE=true
+export NODE_ENV=development HOST=127.0.0.1 PORT="$PORT" RELEASE_VERSION=local-wa-test AUTOMATION_ENABLED=true
+export REQUIRE_MARKETING_FOR_READY=true REQUIRE_HANDOFF_FOR_READY=true
+export WA_PROVIDER=baileys PRODUCTION_REQUIRE_CLOUD=false ALLOW_UNOFFICIAL_WA=true WA_AUTH_DIR="$WA_DIR" WA_REPLY_GROUPS=false WA_LOG_LEVEL=warn
+export AI_ENABLED=true AI_BASE_URL="http://127.0.0.1:${MOCK_PORT}/v1" AI_MODEL=local-test-agent AI_API_KEY=
+export MARKETING_ENABLED=true MARKETING_REQUIRE_KNOWLEDGE=true
 export MARKETING_AGENT_NAME="${MARKETING_AGENT_NAME:-CopyToLive AI}"
 export MARKETING_AGENT_ROLE="${MARKETING_AGENT_ROLE:-conversation marketing assistant}"
 export MARKETING_COMPANY_NAME="${MARKETING_COMPANY_NAME:-CopyToLive}"
@@ -96,38 +93,24 @@ export MARKETING_CTA="${MARKETING_CTA:-Continue the test conversation.}"
 export MARKETING_LOCALE="${MARKETING_LOCALE:-id-ID}"
 export KNOWLEDGE_FACTS="${KNOWLEDGE_FACTS:-This is a test environment. Do not invent prices, guarantees, availability, or legal claims.}"
 export STATE_FILE="$STATE_FILE"
-
-export HANDOFF_MODE=local
-export HANDOFF_QUEUE_DIR="$HANDOFF_DIR"
-export HANDOFF_QUEUE_ENCRYPTION_KEY="$(cat "$KEY_FILE")"
-export HANDOFF_REQUIRE_ENCRYPTED_QUEUE=false
-
-export SCANNER_TOKEN=
-export ADMIN_TOKEN=local-test-admin
+export HANDOFF_MODE=local HANDOFF_QUEUE_DIR="$HANDOFF_DIR" HANDOFF_QUEUE_ENCRYPTION_KEY="$(cat "$KEY_FILE")" HANDOFF_REQUIRE_ENCRYPTED_QUEUE=false
+export SCANNER_TOKEN= ADMIN_TOKEN=local-test-admin
 
 say "[4/5] Start WhatsApp scanner..."
 nohup node src/index.js > "$RUNTIME_DIR/app.log" 2>&1 &
 echo $! > "$APP_PID_FILE"
 
-for _ in $(seq 1 45); do
+for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-    say "[5/5] READY — membuka QR scanner"
-    printf '\n============================================================\n'
-    printf ' CopyToLive WhatsApp TEST\n'
-    printf ' UI: %s\n' "$URL"
-    printf ' Session: %s\n' "$WA_DIR"
-    printf ' Log: %s\n' "$RUNTIME_DIR/app.log"
-    printf '============================================================\n\n'
-    if command -v open >/dev/null 2>&1; then
-      open "$URL" || true
-    fi
-    printf 'Scan dari HP: WhatsApp -> Linked devices -> Link a device\n'
-    printf 'Lalu kirim pesan dari nomor WA test lain. Bot akan auto-reply.\n\n'
+    say "[5/5] READY"
+    printf 'UI: %s\n' "$URL"
+    command -v open >/dev/null 2>&1 && open "$URL" || true
+    printf 'Scan: WhatsApp -> Linked devices -> Link a device\n'
     exit 0
   fi
-  sleep 1
+  kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null || { tail -n 80 "$RUNTIME_DIR/app.log" >&2 || true; fail "Scanner gagal start."; }
+  sleep 0.5
 done
 
-printf '\nScanner gagal start. Log terakhir:\n' >&2
-tail -n 100 "$RUNTIME_DIR/app.log" >&2 || true
-exit 1
+tail -n 80 "$RUNTIME_DIR/app.log" >&2 || true
+fail "Scanner tidak ready dalam 30 detik."
