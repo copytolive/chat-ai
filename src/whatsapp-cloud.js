@@ -1,5 +1,11 @@
 import crypto from 'node:crypto'
+import { createDurableQueue } from './queue.js'
 
+function envBool(name, fallback = false) {
+  const raw = process.env[name]
+  if (raw == null || raw === '') return fallback
+  return /^(1|true|yes|on)$/i.test(raw)
+}
 function timingSafeEqualText(a, b) {
   const left = Buffer.from(String(a || ''))
   const right = Buffer.from(String(b || ''))
@@ -20,7 +26,7 @@ export function extractCloudMessages(payload) {
     for (const change of entry.changes || []) {
       const value = change?.value || {}
       for (const message of value.messages || []) {
-        const text = message?.text?.body || message?.button?.text || message?.interactive?.button_reply?.title || ''
+        const text = message?.text?.body || message?.button?.text || message?.interactive?.button_reply?.title || message?.interactive?.list_reply?.title || message?.image?.caption || message?.video?.caption || ''
         if (!message?.from || !message?.id || !String(text).trim()) continue
         out.push({ jid: String(message.from), text: String(text).trim(), messageId: String(message.id), phoneNumberId: String(value?.metadata?.phone_number_id || '') })
       }
@@ -35,14 +41,12 @@ export function createWhatsAppCloudService({ onMessage, logger = console, metric
   const verifyToken = String(process.env.WA_CLOUD_VERIFY_TOKEN || '').trim()
   const appSecret = String(process.env.WA_CLOUD_APP_SECRET || '').trim()
   const graphVersion = String(process.env.WA_GRAPH_VERSION || 'v26.0').trim()
-  const dedupe = new Map()
-  const dedupeTtlMs = Number(process.env.WA_DEDUPE_TTL_MS || 86_400_000)
+  const queue = createDurableQueue()
+  const requireEncryptedQueue = process.env.NODE_ENV === 'production' && envBool('WA_REQUIRE_ENCRYPTED_QUEUE', true)
 
-  function configured() { return Boolean(token && phoneNumberId && verifyToken && appSecret) }
-  function cleanupDedupe() {
-    const cutoff = Date.now() - dedupeTtlMs
-    for (const [id, seenAt] of dedupe.entries()) if (seenAt < cutoff) dedupe.delete(id)
-  }
+  function credentialsConfigured() { return Boolean(token && phoneNumberId && verifyToken && appSecret) }
+  function configured() { return Boolean(credentialsConfigured() && (!requireEncryptedQueue || queue.encrypted)) }
+
   async function sendText(to, text) {
     const response = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`, {
       method: 'POST',
@@ -56,6 +60,20 @@ export function createWhatsAppCloudService({ onMessage, logger = console, metric
     }
     return response.json().catch(() => ({}))
   }
+
+  async function processMessage(message) {
+    metrics?.inc('messagesReceived')
+    const started = Date.now()
+    try {
+      const reply = await onMessage?.(message)
+      if (reply) { await sendText(message.jid, reply); metrics?.inc('repliesSent') }
+    } catch (error) {
+      metrics?.inc('failures')
+      logger.error?.({ error: error?.message || String(error), messageId: message.messageId }, 'WhatsApp Cloud queued message handling failed')
+      throw error
+    } finally { metrics?.observeLatency(Date.now() - started) }
+  }
+
   function mountRoutes(app) {
     app.get('/webhooks/whatsapp', (req, res) => {
       const mode = String(req.query['hub.mode'] || '')
@@ -64,33 +82,29 @@ export function createWhatsAppCloudService({ onMessage, logger = console, metric
       if (mode === 'subscribe' && timingSafeEqualText(supplied, verifyToken)) return res.status(200).send(challenge)
       return res.sendStatus(403)
     })
-    app.post('/webhooks/whatsapp', async (req, res) => {
+    app.post('/webhooks/whatsapp', (req, res) => {
       if (!verifyMetaSignature(req.rawBody, req.get('x-hub-signature-256'), appSecret)) return res.status(401).json({ ok: false, error: 'INVALID_WEBHOOK_SIGNATURE' })
       const messages = extractCloudMessages(req.body)
-      res.sendStatus(200)
-      if (!messages.length) return
-      cleanupDedupe()
-      for (const message of messages) {
-        if (dedupe.has(message.messageId)) { metrics?.inc('duplicateMessages'); continue }
-        dedupe.set(message.messageId, Date.now())
-        metrics?.inc('messagesReceived')
-        const started = Date.now()
-        try {
-          const reply = await onMessage?.(message)
-          if (reply) { await sendText(message.jid, reply); metrics?.inc('repliesSent') }
-        } catch (error) {
-          metrics?.inc('failures')
-          logger.error?.({ error: error?.message || String(error), messageId: message.messageId }, 'WhatsApp Cloud message handling failed')
-        } finally { metrics?.observeLatency(Date.now() - started) }
+      try {
+        for (const message of messages) {
+          const result = queue.enqueue(message, { id: message.messageId })
+          if (result.duplicate) metrics?.inc('duplicateMessages')
+        }
+      } catch (error) {
+        logger.error?.({ error: error?.message || String(error) }, 'Durable webhook enqueue failed')
+        return res.status(503).json({ ok: false, error: 'WEBHOOK_QUEUE_UNAVAILABLE' })
       }
+      return res.sendStatus(200)
     })
   }
+
   return {
     provider: 'cloud',
-    start: async () => ({ connection: configured() ? 'ready' : 'misconfigured' }),
+    start: async () => { queue.start(processMessage); return { connection: configured() ? 'ready' : 'misconfigured' } },
+    stop: () => queue.stop(),
     reconnect: async () => ({ connection: configured() ? 'ready' : 'misconfigured' }),
     getQr: () => null,
-    getState: () => ({ provider: 'cloud', connection: configured() ? 'ready' : 'misconfigured', configured: configured(), hasQr: false, accountPaired: Boolean(phoneNumberId), phoneNumberConfigured: Boolean(phoneNumberId), webhookSignatureRequired: true }),
+    getState: () => ({ provider: 'cloud', connection: configured() ? 'ready' : 'misconfigured', configured: configured(), credentialsConfigured: credentialsConfigured(), hasQr: false, accountPaired: Boolean(phoneNumberId), phoneNumberConfigured: Boolean(phoneNumberId), webhookSignatureRequired: true, queue: queue.stats(), encryptedQueueRequired: requireEncryptedQueue }),
     mountRoutes,
     sendText,
   }
