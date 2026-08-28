@@ -8,13 +8,24 @@ Open:
 
 `https://codespaces.new/copytolive/chat-ai?quickstart=1`
 
-Create or resume the Codespace. The repository's dev container automatically installs locked dependencies, starts the WhatsApp scanner, forwards port `3847`, and opens the scanner UI.
+Create or resume the Codespace. The dev container installs locked dependencies, starts the WhatsApp scanner, forwards port `3847`, computes the private forwarded scanner URL, and asks Codespaces/VS Code to open `/wa-scanner/` directly.
 
-## 2. Open the scanner UI
+The scanner URL format is:
 
-If the scanner does not open automatically, in the Codespace click **PORTS** -> **WhatsApp Scanner (3847)** -> **Open in Browser**.
+`https://<codespace-name>-3847.<codespaces-forwarding-domain>/wa-scanner/`
 
-Use the `/wa-scanner/` page. Before pairing it should show:
+For current GitHub-hosted Codespaces this normally renders as an `*.app.github.dev` URL.
+
+## 2. Scanner UI
+
+The expected first visible application page is the WhatsApp scanner UI, not `GITHUB_SCAN.md`.
+
+If your browser blocks the automatic new tab, use either fallback:
+
+1. In the Codespace terminal, use the clickable `Scanner UI: https://.../wa-scanner/` URL printed by `scripts/codespace-start.sh`.
+2. Or click **PORTS** -> **WhatsApp Scanner (3847)** -> **Open in Browser**, then append `/wa-scanner/` if needed.
+
+Before pairing it should show:
 
 - QR code
 - `NOT READY`
