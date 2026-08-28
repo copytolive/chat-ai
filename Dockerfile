@@ -1,8 +1,8 @@
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev --ignore-scripts; else npm install --omit=dev --ignore-scripts; fi
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
 FROM node:20-bookworm-slim
 ENV NODE_ENV=production
