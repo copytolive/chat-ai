@@ -9,6 +9,7 @@ const port = Number(process.env.BROWSER_SCAN_HARNESS_PORT || 8766)
 const qr = await QRCode.toDataURL('COPYTOLIVE-SCAN-ACCEPTANCE-PAIRING-PAYLOAD', { errorCorrectionLevel: 'M', width: 360, margin: 2 })
 let connected = false
 function send(res, status, type, body) { res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' }); res.end(body) }
+function routePath(pathname) { if (pathname === '/wa-scanner') return '/'; if (pathname.startsWith('/wa-scanner/')) return pathname.slice('/wa-scanner'.length); return pathname }
 function statusPayload() {
   return {
     ok: true,
@@ -23,14 +24,15 @@ function statusPayload() {
 }
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`)
-  if (url.pathname === '/status') return send(res, 200, 'application/json', JSON.stringify(statusPayload()))
-  if (url.pathname === '/ready') return send(res, connected ? 200 : 503, 'application/json', JSON.stringify({ ok: connected, provider: 'baileys', checks: { whatsapp: connected, ai: true, marketing: true, handoff: true } }))
-  if (url.pathname === '/qr') return connected ? send(res, 404, 'application/json', JSON.stringify({ ok: false, error: 'QR_NOT_AVAILABLE' })) : send(res, 200, 'application/json', JSON.stringify({ ok: true, qr }))
-  if (url.pathname === '/simulate-scan' && req.method === 'POST') { connected = true; return send(res, 200, 'application/json', JSON.stringify({ ok: true, connected: true })) }
-  if (url.pathname === '/marketing/preview' && req.method === 'POST') return send(res, 200, 'application/json', JSON.stringify({ ok: true, event: 'reply', reply: 'Scan-mode automatic reply acceptance.', state: { stage: 3, stageName: 'discovery', leadScore: 42, optedOut: false, handoff: false } }))
-  if (url.pathname === '/app.js') return send(res, 200, 'text/javascript', fs.readFileSync(path.join(root, 'public/app.js')))
-  if (url.pathname === '/style.css') return send(res, 200, 'text/css', fs.readFileSync(path.join(root, 'public/style.css')))
-  if (url.pathname === '/' || url.pathname === '/index.html') return send(res, 200, 'text/html; charset=utf-8', fs.readFileSync(path.join(root, 'public/index.html'), 'utf8'))
+  const pathname = routePath(url.pathname)
+  if (pathname === '/status') return send(res, 200, 'application/json', JSON.stringify(statusPayload()))
+  if (pathname === '/ready') return send(res, connected ? 200 : 503, 'application/json', JSON.stringify({ ok: connected, provider: 'baileys', checks: { whatsapp: connected, ai: true, marketing: true, handoff: true } }))
+  if (pathname === '/qr') return connected ? send(res, 404, 'application/json', JSON.stringify({ ok: false, error: 'QR_NOT_AVAILABLE' })) : send(res, 200, 'application/json', JSON.stringify({ ok: true, qr }))
+  if (pathname === '/simulate-scan' && req.method === 'POST') { connected = true; return send(res, 200, 'application/json', JSON.stringify({ ok: true, connected: true })) }
+  if (pathname === '/marketing/preview' && req.method === 'POST') return send(res, 200, 'application/json', JSON.stringify({ ok: true, event: 'reply', reply: 'Scan-mode automatic reply acceptance.', state: { stage: 3, stageName: 'discovery', leadScore: 42, optedOut: false, handoff: false } }))
+  if (pathname === '/app.js') return send(res, 200, 'text/javascript', fs.readFileSync(path.join(root, 'public/app.js')))
+  if (pathname === '/style.css') return send(res, 200, 'text/css', fs.readFileSync(path.join(root, 'public/style.css')))
+  if (pathname === '/' || pathname === '/index.html') return send(res, 200, 'text/html; charset=utf-8', fs.readFileSync(path.join(root, 'public/index.html'), 'utf8'))
   return send(res, 404, 'text/plain', 'not found')
 })
-server.listen(port, '127.0.0.1', () => console.log(`browser scan harness http://127.0.0.1:${port}`))
+server.listen(port, '127.0.0.1', () => console.log(`browser scan harness http://127.0.0.1:${port}/wa-scanner/`))
