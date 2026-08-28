@@ -2,10 +2,12 @@ const $ = (selector) => document.querySelector(selector)
 const els = { launch: $('#launch-state'), badge: $('#badge'), provider: $('#wa-provider'), waState: $('#wa-state'), queue: $('#queue-state'), automation: $('#automation-state'), aiState: $('#ai-state'), aiModel: $('#ai-model'), aiFallback: $('#ai-fallback'), marketingState: $('#marketing-state'), handoff: $('#handoff-state'), knowledge: $('#knowledge-state'), persistence: $('#persistence-state'), qrWrap: $('#qr-wrap'), qrHelp: $('#qr-help'), previewForm: $('#preview-form'), previewSession: $('#preview-session'), previewInput: $('#preview-input'), previewSubmit: $('#preview-submit'), previewOutput: $('#preview-output'), previewStage: $('#preview-stage'), received: $('#metric-received'), replied: $('#metric-replied'), failures: $('#metric-failures'), handoffs: $('#metric-handoffs'), optouts: $('#metric-optouts'), p95: $('#metric-p95'), lastUpdated: $('#last-updated') }
 let lastQr = null
 let scannerToken = sessionStorage.getItem('chat-ai-scanner-token') || ''
+const legacyPrefix = window.location.pathname === '/wa-scanner' || window.location.pathname.startsWith('/wa-scanner/') ? '/wa-scanner' : ''
+function apiPath(value) { const path = String(value || '').startsWith('/') ? String(value) : `/${value}`; return `${legacyPrefix}${path}` }
 function label(value) { return String(value || 'unknown').replaceAll('_', ' ').toUpperCase() }
 function authHeaders(extra = {}) { return scannerToken ? { ...extra, 'x-scanner-token': scannerToken } : extra }
 async function requestJson(url, options = {}, retryAuth = true) {
-  const response = await fetch(url, { cache: 'no-store', ...options, headers: authHeaders(options.headers || {}) })
+  const response = await fetch(apiPath(url), { cache: 'no-store', ...options, headers: authHeaders(options.headers || {}) })
   if (response.status === 401 && retryAuth) { const entered = window.prompt('Scanner token required'); if (entered) { scannerToken = entered.trim(); sessionStorage.setItem('chat-ai-scanner-token', scannerToken); return requestJson(url, options, false) } }
   return { response, payload: await response.json().catch(() => ({})) }
 }
