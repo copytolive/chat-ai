@@ -1,59 +1,92 @@
-# GitHub-only WhatsApp scanner test
+# GitHub-only WhatsApp public test scanner
 
-Use this when you want to scan and test the real WhatsApp linked-device flow without deploying a VPS first.
+This mode is intentionally optimized for a disposable/test WhatsApp number: GitHub Pages is public, the Codespaces scanner port is made public automatically, the QR can be scanned immediately, and automation starts after pairing.
 
-## 1. Open the repository in GitHub Codespaces
+## 1. Open the scanner
 
 Open:
 
-`https://codespaces.new/copytolive/chat-ai?quickstart=1`
+`https://copytolive.github.io/chat-ai/`
 
-Create or resume the Codespace. The dev container installs locked dependencies, starts the WhatsApp scanner, forwards port `3847`, computes the private forwarded scanner URL, and asks Codespaces/VS Code to open `/wa-scanner/` directly.
+Click **START WHATSAPP SCANNER**.
 
-The scanner URL format is:
+The Codespace dev container installs locked dependencies, starts the WhatsApp scanner, forwards port `3847`, changes that port to **public test visibility**, verifies remote `/health`, and opens `/wa-scanner/` directly.
+
+Scanner URL format:
 
 `https://<codespace-name>-3847.<codespaces-forwarding-domain>/wa-scanner/`
 
-For current GitHub-hosted Codespaces this normally renders as an `*.app.github.dev` URL.
+For GitHub-hosted Codespaces this normally uses `*.app.github.dev`.
 
-## 2. Scanner UI
+## 2. Expected pre-scan state
 
-The expected first visible application page is the WhatsApp scanner UI, not `GITHUB_SCAN.md`.
-
-If your browser blocks the automatic new tab, use either fallback:
-
-1. In the Codespace terminal, use the clickable `Scanner UI: https://.../wa-scanner/` URL printed by `scripts/codespace-start.sh`.
-2. Or click **PORTS** -> **WhatsApp Scanner (3847)** -> **Open in Browser**, then append `/wa-scanner/` if needed.
-
-Before pairing it should show:
+Before pairing, the scanner should show:
 
 - QR code
 - `NOT READY`
 - `AUTO-RUN ENABLED`
 - `SESSION PERSISTENT`
 
-Keep the forwarded port **Private**. GitHub Codespaces private forwarded ports require your GitHub authentication, which is enough for scanning a QR displayed on your desktop screen.
+Run this from the Codespace terminal for a full public test check:
+
+`bash scripts/public-test-doctor.sh`
+
+Expected doctor result before scan:
+
+- Local health: PASS
+- Public health: PASS
+- Provider: PASS · Baileys
+- Automation: PASS · enabled
+- QR: PASS · ready to scan
+- STATE: WAITING_FOR_SCAN
+
+If automatic public visibility fails, run once:
+
+`gh codespace ports visibility 3847:public -c "$CODESPACE_NAME"`
+
+Then rerun the doctor.
 
 ## 3. Scan and test
 
-On the authorized WhatsApp phone:
+On the disposable/test WhatsApp phone:
 
 **WhatsApp -> Linked devices -> Link a device**
 
-Scan the QR shown by the Codespaces UI. After pairing the UI should switch to:
+Scan the QR shown by the public scanner UI. After pairing, the UI should switch to:
 
 - `CONNECTED`
 - `Connected · Auto-run`
 - `LAUNCH READY`
 
-Then send a WhatsApp message to the paired account from another authorized test number. The service handles inbound messages automatically. If no real AI environment variables are configured in the Codespace, the launcher uses the repository's local mock AI so the end-to-end WhatsApp receive -> agent -> reply path can be tested immediately.
+Then send a message to the paired account from another test number. The service handles inbound messages automatically and sends the generated reply back to the sender.
 
-## Persistence
+If no real AI environment is configured in the Codespace, the launcher uses the repository's local mock AI so the receive -> agent -> reply path can be tested immediately.
 
-Linked-device credentials are stored only inside the Codespace under `.auth/codespace/whatsapp`. They are ignored by Git and are never committed to the public repository. Stop/resume of the same Codespace reuses the saved session. Deleting the Codespace deletes that test runtime/session and requires pairing again.
+## 4. Public test boundaries
 
-## Production note
+For this test mode:
 
-Codespaces is for interactive GitHub-hosted scanning and end-to-end testing, not a 24/7 production host. For continuous production, use the committed Docker scan profile on an always-on server or use the official WhatsApp Cloud API path.
+- GitHub Pages is public.
+- Codespaces port `3847` is intentionally public.
+- `/status`, `/health`, `/ready`, `/qr`, and the scanner UI are readable without a scanner token.
+- Admin mutation endpoints remain disabled, so a public visitor cannot toggle automation or issue admin mutations.
+- Linked-device credentials remain only under `.auth/codespace/whatsapp` inside the Codespace and are ignored by Git.
+- QR/session files are never committed to the public repository or backed up to Drive.
 
-Never commit or share QR screenshots, session files, access tokens, phone exports, or chat logs.
+GitHub may revert a public forwarded port to private after a Codespace restart. `scripts/codespace-start.sh` therefore reapplies public visibility on each start/attach.
+
+## 5. Ready-to-use acceptance
+
+The GitHub-side automated gates validate:
+
+- devcontainer configuration
+- GitHub CLI availability contract
+- public-port command contract
+- deterministic `*.app.github.dev` scanner URL
+- direct browser open behavior
+- 1,000-case conversation acceptance
+- Chromium QR before scan
+- Chromium connected/auto-run after simulated scan
+- Docker build and published-port smoke test
+
+The only final acceptance that cannot be performed by CI is the physical WhatsApp action: scan the QR from the test phone and send a real inbound test message.
