@@ -10,32 +10,16 @@ permissions:
 
 jobs:
   test:
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
-      - name: Commit generated lockfile once
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release/launch-ready-v1' }}
-        run: |
-          if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
-            echo 'package-lock.json already tracked'
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add package-lock.json
-            git commit -m 'Lock production dependencies'
-            git push origin HEAD:${{ github.head_ref }}
-          fi
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
       - name: Syntax, unit and 1000-case launch acceptance
         run: npm run check
       - name: Critical dependency audit
