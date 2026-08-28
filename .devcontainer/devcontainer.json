@@ -1,0 +1,19 @@
+{
+  "name": "CopyToLive WhatsApp Scanner",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "forwardPorts": [3847],
+  "portsAttributes": {
+    "3847": {
+      "label": "WhatsApp Scanner",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm ci --ignore-scripts",
+  "postStartCommand": "bash scripts/codespace-start.sh",
+  "postAttachCommand": "bash scripts/codespace-start.sh",
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["GITHUB_SCAN.md"]
+    }
+  }
+}
