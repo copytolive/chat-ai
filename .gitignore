@@ -1,0 +1,36 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# WhatsApp cryptographic/session state — NEVER COMMIT
+.auth/
+auth_info_baileys/
+auth_info*/
+baileys_auth/
+.baileys_auth/
+session/
+sessions/
+wa-session/
+wa-sessions/
+
+# Runtime/private data
+logs/
+chat-logs/
+contacts/
+exports/
+qr/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Browser/cache material
+.wwebjs_auth/
+.wwebjs_cache/
+.cache/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
