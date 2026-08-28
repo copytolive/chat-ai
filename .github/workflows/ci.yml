@@ -20,6 +20,14 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
+      - name: Validate GitHub Codespaces one-click scanner
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('.devcontainer/devcontainer.json','utf8'))"
+          bash -n scripts/codespace-start.sh
+          grep -q '3847' .devcontainer/devcontainer.json
+          grep -q 'codespaces.new/copytolive/chat-ai' README.md
+          grep -q '/wa-scanner/' GITHUB_SCAN.md
+          grep -q 'WA_AUTH_DIR' scripts/codespace-start.sh
       - name: Syntax, unit and 1000-case launch acceptance
         run: npm run check
       - name: Critical dependency audit
