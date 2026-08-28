@@ -49,16 +49,14 @@ export function createWhatsAppService({ onMessage, logger = console } = {}) {
     lastDisconnectCode: null,
     me: null,
     connectedAt: null,
-    authDir,
   }
 
   function publicState() {
     return {
       connection: runtime.connection,
       hasQr: Boolean(runtime.qr),
-      lastError: runtime.lastError,
       lastDisconnectCode: runtime.lastDisconnectCode,
-      me: runtime.me,
+      accountPaired: Boolean(runtime.me),
       connectedAt: runtime.connectedAt,
     }
   }
@@ -93,10 +91,10 @@ export function createWhatsAppService({ onMessage, logger = console } = {}) {
         if (run !== generation || !reply) continue
         await currentSocket.sendMessage(message.key.remoteJid, { text: String(reply) }, { quoted: message })
       } catch (error) {
-        logger.error?.('WhatsApp message handling failed', {
+        logger.error?.({
           jid: message.key.remoteJid,
           error: error?.message || String(error),
-        })
+        }, 'WhatsApp message handling failed')
       }
     }
   }
@@ -137,9 +135,9 @@ export function createWhatsAppService({ onMessage, logger = console } = {}) {
         runtime.connection = 'open'
         runtime.qr = null
         runtime.lastError = null
-        runtime.me = currentSocket.user?.id || null
+        runtime.me = currentSocket.user?.id || 'paired'
         runtime.connectedAt = new Date().toISOString()
-        logger.info?.('WhatsApp connected', { me: runtime.me })
+        logger.info?.('WhatsApp connected')
       }
 
       if (update.connection === 'close') {
@@ -157,7 +155,7 @@ export function createWhatsAppService({ onMessage, logger = console } = {}) {
             connect().catch((error) => {
               runtime.connection = 'error'
               runtime.lastError = error?.message || String(error)
-              logger.error?.('WhatsApp reconnect failed', { error: runtime.lastError })
+              logger.error?.({ error: runtime.lastError }, 'WhatsApp reconnect failed')
             })
           }, 1500)
         }
