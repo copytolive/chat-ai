@@ -1,6 +1,12 @@
 {
   "name": "CopyToLive WhatsApp Scanner",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "containerEnv": {
+    "PUBLIC_TEST_MODE": "true"
+  },
   "forwardPorts": [3847],
   "portsAttributes": {
     "3847": {
