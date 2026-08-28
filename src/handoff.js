@@ -8,15 +8,16 @@ function envBool(name, fallback = false) {
 }
 
 export function createHandoffService({ logger = console } = {}) {
+  const mode = String(process.env.HANDOFF_MODE || 'local').trim().toLowerCase()
   const url = String(process.env.HANDOFF_WEBHOOK_URL || '').trim()
   const secret = String(process.env.HANDOFF_WEBHOOK_SECRET || '').trim()
   const encryptionKey = String(process.env.HANDOFF_QUEUE_ENCRYPTION_KEY || process.env.WA_QUEUE_ENCRYPTION_KEY || '').trim()
   const queue = createDurableQueue({ dir: process.env.HANDOFF_QUEUE_DIR || './data/handoff-queue', encryptionKey })
   const requireEncrypted = process.env.NODE_ENV === 'production' && envBool('HANDOFF_REQUIRE_ENCRYPTED_QUEUE', true)
-  const configured = () => Boolean(url && secret && (!requireEncrypted || queue.encrypted))
+  if (!['local', 'webhook'].includes(mode)) throw new Error(`Unsupported HANDOFF_MODE: ${mode}`)
+  const configured = () => Boolean((!requireEncrypted || queue.encrypted) && (mode === 'local' || (url && secret)))
 
   async function deliver(event) {
-    if (!url || !secret) throw new Error('Human handoff webhook is not configured')
     const body = JSON.stringify(event)
     const signature = `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`
     const response = await fetch(url, {
@@ -44,10 +45,15 @@ export function createHandoffService({ logger = console } = {}) {
     try { await deliver(event) }
     catch (error) { logger.error?.({ error: error?.message || String(error) }, 'Human handoff delivery failed'); throw error }
   }
-  function start() { queue.start(handle) }
+  function start() {
+    queue.init()
+    if (mode === 'webhook') queue.start(handle)
+  }
   function stop() { queue.stop() }
-  function flush() { return queue.drainOnce(handle) }
-  function getState() { return { configured: configured(), webhookConfigured: Boolean(url && secret), encryptedQueueRequired: requireEncrypted, queue: queue.stats() } }
+  function flush() { return mode === 'webhook' ? queue.drainOnce(handle) : Promise.resolve() }
+  function listPending(limit = 50) { return mode === 'local' ? queue.listPending(limit) : [] }
+  function acknowledge(id) { return mode === 'local' ? queue.acknowledge(id) : false }
+  function getState() { return { mode, configured: configured(), webhookConfigured: mode === 'webhook' && Boolean(url && secret), localInbox: mode === 'local', encryptedQueueRequired: requireEncrypted, queue: queue.stats() } }
 
-  return { enqueue, start, stop, flush, getState, isConfigured: configured }
+  return { enqueue, start, stop, flush, listPending, acknowledge, getState, isConfigured: configured }
 }
