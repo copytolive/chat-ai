@@ -1,0 +1,24 @@
+{
+  "name": "@copytolive/chat-ai",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Standalone WhatsApp AI scanner/reply service recovered from the legacy OpenTrue deployment contract.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/wa.js && node --check src/ai.js && node --test"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.23",
+    "dotenv": "16.6.1",
+    "express": "5.1.0",
+    "helmet": "8.1.0",
+    "pino": "9.9.5",
+    "qrcode": "1.5.4"
+  }
+}
