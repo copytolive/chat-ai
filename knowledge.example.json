@@ -1,0 +1,7 @@
+{
+  "facts": [
+    "Replace this with verified product facts before production.",
+    "Only facts in this file or MARKETING_BUSINESS may be stated as product/company facts.",
+    "If price, stock, delivery date, guarantee, discount, or legal terms are absent, the AI must not invent them."
+  ]
+}

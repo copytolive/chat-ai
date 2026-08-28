@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+.env
+.env.*
+!.env.example
+.auth
+data
+*.log
+chat-logs
+contacts
+exports
+qr
+coverage

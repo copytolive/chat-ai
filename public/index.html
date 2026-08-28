@@ -4,74 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>CopyToLive Chat AI — WhatsApp Marketing Agent</title>
+  <title>CopyToLive Chat AI — Launch Console</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="shell">
     <header>
-      <p class="eyebrow">COPYTOLIVE / CHAT-AI</p>
-      <h1>WhatsApp AI Marketing Agent</h1>
-      <p class="lede">Pair one authorized WhatsApp account and run a stage-aware AI conversation agent for inbound qualification, discovery, objection handling, and next-step conversion.</p>
+      <div class="header-row">
+        <div><p class="eyebrow">COPYTOLIVE / CHAT-AI</p><h1>WhatsApp AI Marketing Agent</h1></div>
+        <span id="launch-state" class="launch-badge">CHECKING</span>
+      </div>
+      <p class="lede">Production launch console for inbound WhatsApp qualification, discovery, objection handling, conversion, opt-out, and human handoff.</p>
     </header>
-
     <section class="grid" aria-live="polite">
       <article class="card status-card">
-        <div class="card-head">
-          <h2>Runtime</h2>
-          <span id="badge" class="badge">LOADING</span>
-        </div>
+        <div class="card-head"><h2>Runtime</h2><span id="badge" class="badge">LOADING</span></div>
         <dl>
-          <div><dt>WhatsApp</dt><dd id="wa-state">—</dd></div>
-          <div><dt>AI</dt><dd id="ai-state">—</dd></div>
-          <div><dt>Model</dt><dd id="ai-model">—</dd></div>
-          <div><dt>Marketing</dt><dd id="marketing-state">—</dd></div>
-          <div><dt>Sessions</dt><dd id="marketing-sessions">—</dd></div>
-          <div><dt>Account</dt><dd id="wa-account">—</dd></div>
+          <div><dt>Provider</dt><dd id="wa-provider">—</dd></div><div><dt>WhatsApp</dt><dd id="wa-state">—</dd></div><div><dt>Automation</dt><dd id="automation-state">—</dd></div><div><dt>AI</dt><dd id="ai-state">—</dd></div><div><dt>Model</dt><dd id="ai-model">—</dd></div><div><dt>Fallback</dt><dd id="ai-fallback">—</dd></div><div><dt>Marketing</dt><dd id="marketing-state">—</dd></div><div><dt>Knowledge</dt><dd id="knowledge-state">—</dd></div><div><dt>Persistence</dt><dd id="persistence-state">—</dd></div>
         </dl>
       </article>
-
       <article class="card qr-card">
-        <h2>Pairing QR</h2>
-        <div id="qr-wrap" class="qr-wrap">
-          <div class="placeholder">Waiting for WhatsApp…</div>
-        </div>
-        <p id="qr-help" class="muted">Open WhatsApp → Linked devices → Link a device.</p>
+        <h2>Channel</h2><div id="qr-wrap" class="qr-wrap"><div class="placeholder">Waiting for WhatsApp…</div></div>
+        <p id="qr-help" class="muted">Production should use the official WhatsApp Cloud API. QR pairing remains available for authorized Baileys development use.</p>
       </article>
     </section>
-
+    <section class="metric-grid" aria-label="runtime metrics">
+      <article class="metric"><span>Received</span><strong id="metric-received">0</strong></article><article class="metric"><span>Replied</span><strong id="metric-replied">0</strong></article><article class="metric"><span>Failures</span><strong id="metric-failures">0</strong></article><article class="metric"><span>Handoffs</span><strong id="metric-handoffs">0</strong></article><article class="metric"><span>Opt-outs</span><strong id="metric-optouts">0</strong></article><article class="metric"><span>P95 latency</span><strong id="metric-p95">—</strong></article>
+    </section>
     <section class="card preview-card">
-      <div class="card-head">
-        <div>
-          <h2>Conversation Marketing Preview</h2>
-          <p class="muted">Test the same staged marketing brain before sending real WhatsApp traffic through it.</p>
-        </div>
-        <span id="preview-stage" class="badge">NO SESSION</span>
-      </div>
-      <form id="preview-form" class="preview-form">
-        <label>
-          Session
-          <input id="preview-session" value="demo" maxlength="80" autocomplete="off">
-        </label>
-        <label>
-          Prospect message
-          <textarea id="preview-input" rows="3" maxlength="6000" placeholder="Contoh: Saya tertarik, tapi ingin tahu apakah ini cocok untuk tim saya."></textarea>
-        </label>
-        <button id="preview-submit" type="submit">Send to agent</button>
-      </form>
-      <div id="preview-output" class="preview-output">Enable the marketing agent in <code>.env</code>, then test a message here.</div>
+      <div class="card-head"><div><h2>Conversation Marketing Preview</h2><p class="muted">Uses the same staged marketing brain, verified knowledge rules, persistent suppression logic, and handoff contract as live traffic.</p></div><span id="preview-stage" class="badge">NO SESSION</span></div>
+      <form id="preview-form" class="preview-form"><label>Session<input id="preview-session" value="demo" maxlength="80" autocomplete="off"></label><label>Prospect message<textarea id="preview-input" rows="3" maxlength="6000" placeholder="Contoh: Saya tertarik. Bisa jelaskan yang paling cocok untuk tim saya?"></textarea></label><button id="preview-submit" type="submit">Send to agent</button></form>
+      <div id="preview-output" class="preview-output">Waiting for a test message.</div>
     </section>
-
-    <section class="card notes">
-      <h2>Safe defaults</h2>
-      <p>Inbound-first. Group replies are off by default. Opt-out and human handoff stop automation deterministically. Marketing memory is RAM-only with TTL. Session keys stay outside Git. There is no bulk-send endpoint.</p>
-    </section>
-
-    <footer>
-      <span id="last-updated">Not checked yet</span>
-      <a href="/health">health</a>
-      <a href="/status">status</a>
-    </footer>
+    <section class="card notes"><h2>Launch safety contract</h2><p>Official Cloud API for production, signed webhooks, inbound-first automation, persistent opt-out/handoff, verified-fact grounding, global kill switch, rate limiting, duplicate-message suppression, no bulk-send endpoint, protected admin/scanner surfaces, and a human takeover path.</p></section>
+    <footer><span id="last-updated">Not checked yet</span><a href="/health">health</a><a href="/ready">ready</a><a href="/status">status</a><a href="/metrics">metrics</a></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

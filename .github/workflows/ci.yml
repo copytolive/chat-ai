@@ -11,15 +11,94 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install --ignore-scripts
-      - name: Syntax and unit checks
+        run: |
+          if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+      - name: Syntax, unit and 1000-case launch acceptance
         run: npm run check
       - name: Critical dependency audit
         run: npm audit --omit=dev --audit-level=critical
+      - name: Start production-like local stack
+        env:
+          NODE_ENV: production
+          HOST: 127.0.0.1
+          PORT: 3847
+          RELEASE_VERSION: ci
+          AUTOMATION_ENABLED: 'true'
+          WA_PROVIDER: cloud
+          WA_CLOUD_ACCESS_TOKEN: test-token
+          WA_CLOUD_PHONE_NUMBER_ID: '123456789'
+          WA_CLOUD_VERIFY_TOKEN: verify-ci
+          WA_CLOUD_APP_SECRET: secret-ci
+          AI_ENABLED: 'true'
+          AI_BASE_URL: http://127.0.0.1:9999/v1
+          AI_MODEL: mock-primary
+          MARKETING_ENABLED: 'true'
+          MARKETING_REQUIRE_KNOWLEDGE: 'true'
+          MARKETING_COMPANY_NAME: CopyToLive
+          MARKETING_BUSINESS: Verified CI business context
+          KNOWLEDGE_FACTS: Verified CI fact
+          STATE_FILE: /tmp/chat-ai-ci-state.json
+        run: |
+          node scripts/mock-ai.mjs > /tmp/mock-ai.log 2>&1 &
+          echo $! > /tmp/mock-ai.pid
+          node src/index.js > /tmp/chat-ai.log 2>&1 &
+          echo $! > /tmp/chat-ai.pid
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3847/health && break || sleep 1; done
+          curl -fsS http://127.0.0.1:3847/ready
+          curl -fsS 'http://127.0.0.1:3847/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-ci&hub.challenge=CI_OK' | grep CI_OK
+          curl -fsS -H 'content-type: application/json' -d '{"sessionId":"ci","text":"Saya tertarik untuk tim saya"}' http://127.0.0.1:3847/marketing/preview | grep 'Mock validated reply'
+          LAUNCH_BASE_URL=http://127.0.0.1:3847 node scripts/launch-doctor.mjs
+      - name: Upload service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: |
+            /tmp/chat-ai.log
+            /tmp/mock-ai.log
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Start browser fixture
+        run: |
+          node scripts/browser-harness.mjs > /tmp/browser-harness.log 2>&1 &
+          echo $! > /tmp/browser-harness.pid
+          for i in {1..20}; do curl -fsS http://127.0.0.1:8765/status && break || sleep 1; done
+      - name: Chromium browser acceptance
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME"
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1400 --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/ > browser-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1400 --virtual-time-budget=5000 --screenshot=browser-launch.png http://127.0.0.1:8765/
+          grep -q 'LAUNCH READY' browser-dom.html
+          grep -q 'Browser acceptance reply' browser-dom.html
+          grep -q 'DISCOVERY · 42/100' browser-dom.html
+      - name: Upload browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            browser-dom.html
+            browser-launch.png
+            /tmp/browser-harness.log
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --pull -t copytolive/chat-ai:${{ github.sha }} .
