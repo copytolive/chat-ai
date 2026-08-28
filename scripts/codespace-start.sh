@@ -11,12 +11,49 @@ STATE_FILE="$RUNTIME_DIR/state.json"
 KEY_FILE="$RUNTIME_DIR/handoff.key"
 APP_PID_FILE="$RUNTIME_DIR/app.pid"
 MOCK_PID_FILE="$RUNTIME_DIR/mock-ai.pid"
+PUBLIC_TEST_MODE="${PUBLIC_TEST_MODE:-true}"
 
 mkdir -p "$WA_DIR" "$HANDOFF_DIR"
 chmod 700 "$RUNTIME_DIR" "$WA_DIR" "$HANDOFF_DIR" 2>/dev/null || true
 
 scanner_url() {
   bash "$ROOT/scripts/codespace-url.sh" 3847 /wa-scanner/
+}
+
+health_url() {
+  bash "$ROOT/scripts/codespace-url.sh" 3847 /health
+}
+
+make_scanner_public() {
+  if ! [[ "$PUBLIC_TEST_MODE" =~ ^(1|true|yes|on)$ ]]; then
+    echo "Port visibility: PRIVATE (PUBLIC_TEST_MODE disabled)"
+    return 0
+  fi
+  if [[ -z "${CODESPACE_NAME:-}" ]]; then
+    echo "Port visibility: local runtime (not inside GitHub Codespaces)"
+    return 0
+  fi
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "WARNING: GitHub CLI is unavailable; cannot make port 3847 public automatically." >&2
+    return 1
+  fi
+
+  local url code
+  url="$(health_url)"
+  for _ in $(seq 1 12); do
+    GH_PROMPT_DISABLED=1 gh codespace ports visibility 3847:public -c "$CODESPACE_NAME" >/dev/null 2>&1 || true
+    code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+    if [[ "$code" == "200" ]]; then
+      echo "Port visibility: PUBLIC TEST · CONFIRMED"
+      echo "Public health: $url"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "WARNING: automatic public-port confirmation failed." >&2
+  echo "Run once if needed: gh codespace ports visibility 3847:public -c ${CODESPACE_NAME}" >&2
+  return 1
 }
 
 open_scanner_ui() {
@@ -41,6 +78,7 @@ fi
 if curl -fsS http://127.0.0.1:3847/health >/dev/null 2>&1; then
   echo
   echo "CopyToLive WhatsApp scanner is already running."
+  make_scanner_public || true
   open_scanner_ui
   exit 0
 fi
@@ -63,7 +101,7 @@ fi
 export NODE_ENV=development
 export HOST=127.0.0.1
 export PORT=3847
-export RELEASE_VERSION=codespaces-scan
+export RELEASE_VERSION=codespaces-public-test
 export AUTOMATION_ENABLED=true
 export REQUIRE_MARKETING_FOR_READY=true
 export REQUIRE_HANDOFF_FOR_READY=true
@@ -80,12 +118,12 @@ export MARKETING_REQUIRE_KNOWLEDGE=true
 export MARKETING_AGENT_NAME="${MARKETING_AGENT_NAME:-CopyToLive AI}"
 export MARKETING_AGENT_ROLE="${MARKETING_AGENT_ROLE:-conversation marketing assistant}"
 export MARKETING_COMPANY_NAME="${MARKETING_COMPANY_NAME:-CopyToLive}"
-export MARKETING_BUSINESS="${MARKETING_BUSINESS:-Authorized GitHub Codespaces WhatsApp scanner end-to-end test environment.}"
-export MARKETING_VALUE_PROPOSITION="${MARKETING_VALUE_PROPOSITION:-Test automatic inbound WhatsApp conversation handling safely before production cutover.}"
-export MARKETING_PURPOSE="${MARKETING_PURPOSE:-Understand the inbound message and provide one concise useful next step.}"
+export MARKETING_BUSINESS="${MARKETING_BUSINESS:-Authorized public GitHub Codespaces WhatsApp test environment.}"
+export MARKETING_VALUE_PROPOSITION="${MARKETING_VALUE_PROPOSITION:-Test automatic inbound WhatsApp conversation handling before production cutover.}"
+export MARKETING_PURPOSE="${MARKETING_PURPOSE:-Understand the inbound test message and provide one concise useful next step.}"
 export MARKETING_CTA="${MARKETING_CTA:-Continue the test conversation or ask for a human operator.}"
 export MARKETING_LOCALE="${MARKETING_LOCALE:-id-ID}"
-export KNOWLEDGE_FACTS="${KNOWLEDGE_FACTS:-This environment is an authorized scanner test. Do not invent product, price, performance, availability, or legal claims.}"
+export KNOWLEDGE_FACTS="${KNOWLEDGE_FACTS:-This environment is an authorized WA test. Do not invent product, price, performance, availability, or legal claims.}"
 export STATE_FILE="$STATE_FILE"
 
 export HANDOFF_MODE=local
@@ -93,8 +131,9 @@ export HANDOFF_QUEUE_DIR="$HANDOFF_DIR"
 export HANDOFF_QUEUE_ENCRYPTION_KEY="$(cat "$KEY_FILE")"
 export HANDOFF_REQUIRE_ENCRYPTED_QUEUE=false
 
-export SCANNER_TOKEN="${SCANNER_TOKEN:-}"
-export ADMIN_TOKEN="${ADMIN_TOKEN:-codespaces-local-admin-not-for-public-port}"
+# Public test UI/QR is intentionally unauthenticated. Admin mutation endpoints remain disabled.
+export SCANNER_TOKEN=""
+export ADMIN_TOKEN=""
 
 nohup node src/index.js > "$RUNTIME_DIR/app.log" 2>&1 &
 echo $! > "$APP_PID_FILE"
@@ -103,13 +142,15 @@ for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:3847/health >/dev/null 2>&1; then
     echo
     echo "============================================================"
-    echo " CopyToLive WhatsApp Scanner is running in GitHub Codespaces"
+    echo " CopyToLive WhatsApp Scanner · PUBLIC TEST MODE"
     echo "============================================================"
+    make_scanner_public || true
     open_scanner_ui
-    echo "Then scan: WhatsApp -> Linked devices -> Link a device"
-    echo "The forwarded Codespaces port should remain PRIVATE."
-    echo "WhatsApp session: $WA_DIR"
+    echo "Scan: WhatsApp -> Linked devices -> Link a device"
+    echo "After scan: CONNECTED -> AUTO-RUN -> LAUNCH READY"
+    echo "WhatsApp session (not public): $WA_DIR"
     echo "Logs: $RUNTIME_DIR/app.log"
+    echo "Doctor: bash scripts/public-test-doctor.sh"
     echo "============================================================"
     exit 0
   fi
