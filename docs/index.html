@@ -12,36 +12,38 @@
     <header class="hero">
       <div class="eyebrow">COPYTOLIVE · CHAT AI</div>
       <h1>WhatsApp AI Scanner</h1>
-      <p class="lead">Satu pintu dari GitHub Pages untuk menyalakan scanner WhatsApp, scan QR, lalu menguji balasan AI otomatis.</p>
-      <div class="badges"><span>PUBLIC UI</span><span>PRIVATE SESSION</span><span>AUTO-RUN</span></div>
+      <p class="lead">Public test mode: klik sekali, Codespace hidup, port scanner dibuat public, QR terbuka, lalu test balasan AI otomatis.</p>
+      <div class="badges"><span>PUBLIC TEST UI</span><span>PUBLIC QR PORT</span><span>AUTO-RUN</span></div>
     </header>
 
     <section class="card primary">
       <div>
         <div class="step">01</div>
-        <h2>Nyalakan scanner</h2>
-        <p>GitHub Pages adalah UI statis. Runtime WhatsApp/QR dijalankan di GitHub Codespaces. Setelah Codespace siap, scanner membuka halaman <strong>/wa-scanner/</strong> secara otomatis di tab browser baru.</p>
+        <h2>Start public test scanner</h2>
+        <p>Runtime WhatsApp dijalankan di GitHub Codespaces. Launcher otomatis mencoba mengubah port <strong>3847</strong> menjadi <strong>PUBLIC</strong>, memverifikasi <strong>/health</strong>, lalu membuka <strong>/wa-scanner/</strong>.</p>
       </div>
       <a class="button" href="https://codespaces.new/copytolive/chat-ai?quickstart=1" target="_blank" rel="noopener">START WHATSAPP SCANNER</a>
     </section>
 
     <section class="grid">
-      <article class="card"><div class="step">02</div><h2>Scan QR</h2><p>Tunggu tab <strong>WhatsApp Scanner</strong> terbuka. Jika browser memblokir tab otomatis, klik <strong>PORTS → WhatsApp Scanner (3847) → Open in Browser</strong>. Lalu buka <strong>WhatsApp → Linked devices → Link a device</strong> dan scan QR.</p></article>
-      <article class="card"><div class="step">03</div><h2>Test auto-reply</h2><p>Setelah status berubah menjadi <strong>CONNECTED · AUTO-RUN · LAUNCH READY</strong>, kirim pesan dari nomor WhatsApp lain. Agent membalas otomatis.</p></article>
+      <article class="card"><div class="step">02</div><h2>Scan QR</h2><p>Ketika tab scanner terbuka, gunakan <strong>WhatsApp test → Linked devices → Link a device</strong> dan scan QR. Jika tab tidak terbuka, terminal menampilkan URL <strong>Scanner UI</strong> yang bisa diklik.</p></article>
+      <article class="card"><div class="step">03</div><h2>Test auto-reply</h2><p>Setelah status berubah menjadi <strong>CONNECTED · AUTO-RUN · LAUNCH READY</strong>, kirim pesan dari nomor WhatsApp test lain. Agent harus membalas otomatis.</p></article>
     </section>
 
     <section class="card status-card">
-      <h2>Launch contract</h2>
+      <h2>Public test contract</h2>
       <div class="rows">
+        <div><span>GitHub Pages</span><b>PUBLIC</b></div>
+        <div><span>Codespace port 3847</span><b>PUBLIC TEST</b></div>
         <div><span>Scanner route</span><b>/wa-scanner/</b></div>
-        <div><span>Runtime</span><b>GitHub Codespaces</b></div>
-        <div><span>Session</span><b>Private · ignored by Git</b></div>
+        <div><span>Session files</span><b>Codespace only · not committed</b></div>
+        <div><span>Automation</span><b>Enabled</b></div>
         <div><span>After scan</span><b>Automatic reply + reconnect</b></div>
       </div>
     </section>
 
     <section class="note">
-      <strong>Penting:</strong> jangan commit QR, linked-device session, token, atau chat log ke repository publik. Mode scan memakai Baileys/WhatsApp Web dan cocok untuk test/compatibility; Cloud API tetap jalur produksi resmi.
+      <strong>Mode test:</strong> gunakan hanya nomor WhatsApp test. QR memang sengaja dapat diakses melalui port public selama pengujian. Session linked-device tetap tidak dipublish ke GitHub/Drive, dan endpoint admin mutation dinonaktifkan agar public test tidak dapat mengubah kontrol runtime.
     </section>
 
     <footer>
