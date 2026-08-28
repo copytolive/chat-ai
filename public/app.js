@@ -10,13 +10,26 @@ const els = {
 }
 
 let lastQr = null
+let scannerToken = sessionStorage.getItem('chat-ai-scanner-token') || ''
 
 function labelForConnection(connection) {
   return String(connection || 'unknown').replaceAll('_', ' ').toUpperCase()
 }
 
-async function getJson(url) {
-  const response = await fetch(url, { cache: 'no-store' })
+function authHeaders() {
+  return scannerToken ? { 'x-scanner-token': scannerToken } : {}
+}
+
+async function getJson(url, retryAuth = true) {
+  const response = await fetch(url, { cache: 'no-store', headers: authHeaders() })
+  if (response.status === 401 && retryAuth) {
+    const entered = window.prompt('Scanner token required')
+    if (entered) {
+      scannerToken = entered.trim()
+      sessionStorage.setItem('chat-ai-scanner-token', scannerToken)
+      return getJson(url, false)
+    }
+  }
   const payload = await response.json().catch(() => ({}))
   return { response, payload }
 }
@@ -29,7 +42,7 @@ function renderStatus(payload) {
   els.waState.textContent = labelForConnection(connection)
   els.aiState.textContent = ai.configured ? 'READY' : ai.enabled ? 'MISCONFIGURED' : 'DISABLED'
   els.aiModel.textContent = ai.model || '—'
-  els.waAccount.textContent = wa.me || '—'
+  els.waAccount.textContent = wa.accountPaired ? 'PAIRED' : '—'
   els.badge.textContent = connection === 'open' ? 'CONNECTED' : connection === 'qr' ? 'SCAN QR' : labelForConnection(connection)
   els.badge.dataset.state = connection
   els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`
