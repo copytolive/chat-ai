@@ -142,5 +142,37 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Validate Compose launch profiles
+        run: |
+          cp .env.example .env
+          cp .env.scan.example .env.scan
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.scan.yml config >/dev/null
       - name: Build production image
         run: docker build --pull -t copytolive/chat-ai:${{ github.sha }} .
+      - name: Verify container is reachable through published loopback port
+        run: |
+          docker volume create chat_ai_smoke >/dev/null
+          docker run -d --name chat-ai-smoke \
+            -p 127.0.0.1:3850:3847 \
+            -v chat_ai_smoke:/data \
+            -e HOST=0.0.0.0 \
+            -e PORT=3847 \
+            -e SCANNER_TOKEN=smoke-token \
+            -e NODE_ENV=production \
+            -e WA_PROVIDER=cloud \
+            -e WA_CLOUD_ACCESS_TOKEN=test-token \
+            -e WA_CLOUD_PHONE_NUMBER_ID=123456789 \
+            -e WA_CLOUD_VERIFY_TOKEN=verify \
+            -e WA_CLOUD_APP_SECRET=secret \
+            -e WA_QUEUE_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            -e HANDOFF_MODE=local \
+            -e AI_ENABLED=false \
+            -e MARKETING_ENABLED=false \
+            -e REQUIRE_MARKETING_FOR_READY=false \
+            -e REQUIRE_HANDOFF_FOR_READY=false \
+            copytolive/chat-ai:${{ github.sha }}
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3850/health && break || sleep 1; done
+          curl -fsS http://127.0.0.1:3850/health | grep '"ok":true'
+          docker rm -f chat-ai-smoke >/dev/null
+          docker volume rm chat_ai_smoke >/dev/null
