@@ -13,7 +13,7 @@ function parseEncryptionKey(value) {
   else {
     try { key = Buffer.from(raw, 'base64') } catch { key = null }
   }
-  if (!key || key.length !== 32) throw new Error('WA_QUEUE_ENCRYPTION_KEY must be 32 bytes (64 hex chars or base64)')
+  if (!key || key.length !== 32) throw new Error('Queue encryption key must be 32 bytes (64 hex chars or base64)')
   return key
 }
 
@@ -36,7 +36,7 @@ export function createDurableQueue({ dir = process.env.WA_QUEUE_DIR || './data/w
   function open(raw) {
     const envelope = JSON.parse(raw)
     if (!envelope.encrypted) return envelope.item
-    if (!key) throw new Error('Queue item is encrypted but WA_QUEUE_ENCRYPTION_KEY is unavailable')
+    if (!key) throw new Error('Queue item is encrypted but its encryption key is unavailable')
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'))
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'))
     return JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, 'base64')), decipher.final()]).toString('utf8'))
@@ -86,6 +86,28 @@ export function createDurableQueue({ dir = process.env.WA_QUEUE_DIR || './data/w
       throw error
     }
   }
+  function listPending(limit = 50) {
+    const max = Math.min(200, Math.max(1, Number(limit) || 50))
+    const items = []
+    for (const name of pendingFiles().slice(0, max)) {
+      try {
+        const item = open(fs.readFileSync(path.join(resolved, name), 'utf8'))
+        items.push({ id: item.id, enqueuedAt: item.enqueuedAt, attempts: item.attempts, payload: item.payload })
+      } catch {}
+    }
+    return items
+  }
+  function acknowledge(id) {
+    init()
+    const safeId = String(id || '').toLowerCase()
+    if (!/^[a-f0-9]{64}$/.test(safeId)) return false
+    const file = path.join(resolved, `${safeId}.queue`)
+    if (!fs.existsSync(file)) return false
+    processed[safeId] = now()
+    persistProcessed()
+    fs.unlinkSync(file)
+    return true
+  }
   async function drainOnce(handler) {
     init()
     if (busy) return
@@ -120,5 +142,5 @@ export function createDurableQueue({ dir = process.env.WA_QUEUE_DIR || './data/w
   }
   function stop() { if (timer) clearInterval(timer); timer = null }
   function stats() { return { pending: pendingFiles().length, processedRecent: Object.keys(processed).length, persistence: 'durable-file-queue', encrypted: Boolean(key) } }
-  return { init, enqueue, drainOnce, start, stop, stats, encrypted: Boolean(key), dir: resolved }
+  return { init, enqueue, listPending, acknowledge, drainOnce, start, stop, stats, encrypted: Boolean(key), dir: resolved }
 }
