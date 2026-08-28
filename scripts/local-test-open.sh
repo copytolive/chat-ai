@@ -27,6 +27,19 @@ stop_pidfile() {
   fi
   rm -f "$pidfile"
 }
+wa_connection() {
+  curl -fsS "http://127.0.0.1:${PORT}/status" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).whatsapp?.connection||'')}catch{console.log('')}})"
+}
+wait_for_qr_or_open() {
+  local loops="${1:-40}" conn=""
+  for _ in $(seq 1 "$loops"); do
+    conn="$(wa_connection || true)"
+    if [[ "$conn" == "qr" || "$conn" == "open" ]]; then printf '%s\n' "$conn"; return 0; fi
+    kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null || return 1
+    sleep 0.5
+  done
+  return 1
+}
 
 command -v git >/dev/null 2>&1 || fail "Git belum tersedia. Jalankan: xcode-select --install"
 command -v node >/dev/null 2>&1 || fail "Node.js belum tersedia. Install Node.js 20+ (brew install node)."
@@ -69,11 +82,7 @@ say "[3/5] Start test AI..."
 nohup env MOCK_AI_PORT="$MOCK_PORT" node scripts/mock-ai.mjs > "$RUNTIME_DIR/mock-ai.log" 2>&1 &
 echo $! > "$MOCK_PID_FILE"
 for _ in $(seq 1 30); do
-  if curl -fsS -X POST "http://127.0.0.1:${MOCK_PORT}/v1/chat/completions" \
-    -H 'content-type: application/json' \
-    -d '{"messages":[{"role":"user","content":"ping"}]}' >/dev/null 2>&1; then
-    break
-  fi
+  if curl -fsS -X POST "http://127.0.0.1:${MOCK_PORT}/v1/chat/completions" -H 'content-type: application/json' -d '{"messages":[{"role":"user","content":"ping"}]}' >/dev/null 2>&1; then break; fi
   kill -0 "$(cat "$MOCK_PID_FILE")" 2>/dev/null || { tail -n 50 "$RUNTIME_DIR/mock-ai.log" >&2 || true; fail "Test AI gagal start."; }
   sleep 0.2
 done
@@ -81,7 +90,8 @@ curl -fsS -X POST "http://127.0.0.1:${MOCK_PORT}/v1/chat/completions" -H 'conten
 
 export NODE_ENV=development HOST=127.0.0.1 PORT="$PORT" RELEASE_VERSION=local-wa-test AUTOMATION_ENABLED=true
 export REQUIRE_MARKETING_FOR_READY=true REQUIRE_HANDOFF_FOR_READY=true
-export WA_PROVIDER=baileys PRODUCTION_REQUIRE_CLOUD=false ALLOW_UNOFFICIAL_WA=true WA_AUTH_DIR="$WA_DIR" WA_REPLY_GROUPS=false WA_LOG_LEVEL=warn
+export WA_PROVIDER=baileys PRODUCTION_REQUIRE_CLOUD=false ALLOW_UNOFFICIAL_WA=true WA_AUTH_DIR="$WA_DIR" WA_REPLY_GROUPS=false WA_LOG_LEVEL=info
+export WA_USE_LATEST_WEB_VERSION=true WA_BROWSER_IDENTITY=ubuntu WA_VERSION_FETCH_TIMEOUT_MS=10000 WA_QR_TIMEOUT_MS=30000
 export AI_ENABLED=true AI_BASE_URL="http://127.0.0.1:${MOCK_PORT}/v1" AI_MODEL=local-test-agent AI_API_KEY=
 export MARKETING_ENABLED=true MARKETING_REQUIRE_KNOWLEDGE=true
 export MARKETING_AGENT_NAME="${MARKETING_AGENT_NAME:-CopyToLive AI}"
@@ -102,16 +112,31 @@ nohup node src/index.js > "$RUNTIME_DIR/app.log" 2>&1 &
 echo $! > "$APP_PID_FILE"
 
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-    say "[5/5] READY"
-    printf 'UI: %s\n' "$URL"
-    command -v open >/dev/null 2>&1 && open "$URL" || true
-    printf 'Scan: WhatsApp -> Linked devices -> Link a device\n'
-    exit 0
-  fi
-  kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null || { tail -n 80 "$RUNTIME_DIR/app.log" >&2 || true; fail "Scanner gagal start."; }
+  curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 && break
+  kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null || { tail -n 100 "$RUNTIME_DIR/app.log" >&2 || true; fail "Scanner gagal start."; }
   sleep 0.5
 done
+curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 || { tail -n 100 "$RUNTIME_DIR/app.log" >&2 || true; fail "Scanner HTTP tidak hidup."; }
 
-tail -n 80 "$RUNTIME_DIR/app.log" >&2 || true
-fail "Scanner tidak ready dalam 30 detik."
+conn="$(wait_for_qr_or_open 40 || true)"
+if [[ "$conn" != "qr" && "$conn" != "open" ]]; then
+  say "QR belum muncul; mencoba reconnect otomatis sekali..."
+  curl -fsS -X POST "http://127.0.0.1:${PORT}/reconnect" -H 'x-admin-token: local-test-admin' >/dev/null 2>&1 || true
+  conn="$(wait_for_qr_or_open 40 || true)"
+fi
+
+if [[ "$conn" == "qr" ]]; then
+  say "[5/5] QR READY"
+elif [[ "$conn" == "open" ]]; then
+  say "[5/5] CONNECTED"
+else
+  printf '\nStatus terakhir:\n'
+  curl -sS "http://127.0.0.1:${PORT}/status" || true
+  printf '\n\nLog terakhir:\n'
+  tail -n 120 "$RUNTIME_DIR/app.log" || true
+  fail "QR tidak muncul setelah retry. Log di atas menunjukkan penyebab nyata."
+fi
+
+printf 'UI: %s\n' "$URL"
+command -v open >/dev/null 2>&1 && open "$URL" || true
+if [[ "$conn" == "qr" ]]; then printf 'Scan: WhatsApp -> Linked devices -> Link a device\n'; else printf 'Session sudah terhubung. Kirim pesan dari WA test lain.\n'; fi
