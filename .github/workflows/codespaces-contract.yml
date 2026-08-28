@@ -16,9 +16,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate devcontainer and launcher syntax
         run: |
-          node -e "JSON.parse(require('fs').readFileSync('.devcontainer/devcontainer.json','utf8'))"
+          node -e "const d=JSON.parse(require('fs').readFileSync('.devcontainer/devcontainer.json','utf8')); if(d.containerEnv?.PUBLIC_TEST_MODE!=='true') process.exit(1); if(!d.features?.['ghcr.io/devcontainers/features/github-cli:1']) process.exit(1)"
           bash -n scripts/codespace-url.sh
           bash -n scripts/codespace-start.sh
+          bash -n scripts/public-test-doctor.sh
           ! grep -q 'openFiles' .devcontainer/devcontainer.json
       - name: Validate deterministic forwarded scanner URL
         env:
@@ -26,8 +27,18 @@ jobs:
           GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: app.github.dev
         run: |
           test "$(bash scripts/codespace-url.sh 3847 /wa-scanner/)" = "https://stunning-xylophone-test-3847.app.github.dev/wa-scanner/"
+          test "$(bash scripts/codespace-url.sh 3847 /health)" = "https://stunning-xylophone-test-3847.app.github.dev/health"
       - name: Validate direct-open contract
         run: |
           grep -q 'code --open-url' scripts/codespace-start.sh
           grep -q 'Scanner UI:' scripts/codespace-start.sh
-          grep -q 'scanner membuka halaman' docs/index.html
+          grep -q 'scanner membuka halaman' docs/index.html || grep -q 'membuka /wa-scanner/' docs/index.html
+      - name: Validate public WA test contract
+        run: |
+          grep -q 'gh codespace ports visibility 3847:public' scripts/codespace-start.sh
+          grep -q 'PUBLIC TEST · CONFIRMED' scripts/codespace-start.sh
+          grep -q 'export SCANNER_TOKEN=""' scripts/codespace-start.sh
+          grep -q 'export ADMIN_TOKEN=""' scripts/codespace-start.sh
+          grep -q 'Public health: PASS' scripts/public-test-doctor.sh
+          grep -q 'QR: PASS · ready to scan' scripts/public-test-doctor.sh
+          grep -q 'PUBLIC QR PORT' docs/index.html
