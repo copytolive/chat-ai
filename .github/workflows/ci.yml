@@ -36,6 +36,8 @@ jobs:
           WA_CLOUD_PHONE_NUMBER_ID: '123456789'
           WA_CLOUD_VERIFY_TOKEN: verify-ci
           WA_CLOUD_APP_SECRET: secret-ci
+          WA_QUEUE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          WA_QUEUE_DIR: /tmp/chat-ai-ci-webhook-queue
           AI_ENABLED: 'true'
           AI_BASE_URL: http://127.0.0.1:9999/v1
           AI_MODEL: mock-primary
@@ -46,6 +48,7 @@ jobs:
           KNOWLEDGE_FACTS: Verified CI fact
           STATE_FILE: /tmp/chat-ai-ci-state.json
         run: |
+          rm -rf /tmp/chat-ai-ci-webhook-queue /tmp/chat-ai-ci-state.json
           node scripts/mock-ai.mjs > /tmp/mock-ai.log 2>&1 &
           echo $! > /tmp/mock-ai.pid
           node src/index.js > /tmp/chat-ai.log 2>&1 &
