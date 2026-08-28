@@ -4,7 +4,7 @@ Public, launch-hardened WhatsApp AI conversation-marketing service. It preserves
 
 ## Launch architecture
 
-`WhatsApp Cloud API → signed webhook → dedupe/rate-limit → staged marketing agent → verified knowledge → AI primary/fallback → reply or human handoff`
+`WhatsApp Cloud API → signed webhook → encrypted durable queue/idempotency → staged marketing agent → verified knowledge → AI primary/fallback → reply or human handoff`
 
 Production defaults are fail-closed:
 
@@ -12,7 +12,8 @@ Production defaults are fail-closed:
 - `AUTOMATION_ENABLED=false` until an operator deliberately enables it.
 - `/ready` returns 200 only when WhatsApp, AI, required marketing configuration, verified knowledge, and the automation switch are ready.
 - Meta webhook POSTs require `X-Hub-Signature-256` validation with `WA_CLOUD_APP_SECRET`.
-- Duplicate inbound message IDs are suppressed.
+- Every accepted inbound message is durably queued before webhook ACK; repeated message IDs remain suppressed across restart.
+- Production requires an AES-256-GCM queue encryption key by default.
 - Operator surfaces use `SCANNER_TOKEN`; mutation endpoints also require `ADMIN_TOKEN`.
 - No bulk-send or contact-scraping endpoint exists.
 
@@ -24,18 +25,21 @@ Every AI turn carries stage, 0–100 lead score, next action, handoff flag, and 
 
 ### Durable safety state
 
-Raw chat text is not written to the durable state file. The service persists only automation metadata such as stage, lead score, opt-out, handoff, pause reason, next action, and timestamps. Opt-out therefore survives restart. Human handoff suppresses the bot until an admin explicitly resumes the contact. Explicit `start`/`mulai lagi` can re-enable a previously opted-out conversation.
+Raw chat text is not written to the durable suppression state file. Contact identifiers are SHA-256 hashed before persistence; the service stores only automation metadata such as stage, lead score, opt-out, handoff, pause reason, next action, and timestamps. Opt-out therefore survives restart. Human handoff suppresses the bot until an admin explicitly resumes the contact. Explicit `start`/`mulai lagi` can re-enable a previously opted-out conversation.
+
+Pending Cloud webhook work temporarily contains the routing/message data needed to finish delivery. Those queue files are durable and AES-256-GCM encrypted in production, and a persistent processed-message ledger prevents duplicate replies after provider retries/restarts.
 
 ## Production setup
 
 1. Copy `.env.example` to `.env` outside Git and fill real secrets.
 2. Review `knowledge.example.json`, create `/data/knowledge.json`, and mount `/data` persistently.
-3. Configure the Meta webhook URL: `https://<host>/webhooks/whatsapp`.
-4. Configure an OpenAI-compatible primary model and preferably a fallback model.
-5. Deploy with `docker compose up -d --build` behind HTTPS/reverse proxy.
-6. Keep automation OFF, verify `/health`, then satisfy `/ready`.
-7. Enable automation and run `npm run launch:doctor` from a protected operator host.
-8. Perform controlled inbound tests for discovery, objection, opt-out, explicit re-opt-in, and human handoff.
+3. Generate a dedicated 32-byte `WA_QUEUE_ENCRYPTION_KEY` and keep it in the deployment secret manager.
+4. Configure the Meta webhook URL: `https://<host>/webhooks/whatsapp`.
+5. Configure an OpenAI-compatible primary model and preferably a fallback model.
+6. Deploy with `docker compose up -d --build` behind HTTPS/reverse proxy.
+7. Keep automation OFF, verify `/health`, then satisfy `/ready`.
+8. Enable automation and run `npm run launch:doctor` from a protected operator host.
+9. Perform controlled inbound tests for discovery, objection, opt-out, explicit re-opt-in, human handoff, duplicate message ID, and restart recovery.
 
 See `RUNBOOK.md` for go-live and rollback steps and `SECURITY.md` for the security contract.
 
@@ -56,9 +60,11 @@ See `RUNBOOK.md` for go-live and rollback steps and `SECURITY.md` for the securi
 
 ## Automated launch gates
 
+Dependencies are committed with `package-lock.json` and CI installs them using `npm ci`.
+
 GitHub Actions runs three independent jobs:
 
-1. **test** — syntax/unit tests, a deterministic 1,000-case launch acceptance matrix, critical dependency audit, production-like local stack, Cloud webhook verification, preview API, and launch doctor.
+1. **test** — syntax/unit tests, hashed-at-rest state checks, encrypted durable queue/idempotency checks, a deterministic 1,000-case launch acceptance matrix, critical dependency audit, production-like local stack, Cloud webhook verification, preview API, and launch doctor.
 2. **browser** — real headless Chromium loads the launch console, executes its JavaScript, submits a marketing-preview form, and must render `LAUNCH READY`, a preview reply, and `DISCOVERY · 42/100`; DOM + PNG are uploaded as evidence.
 3. **docker** — builds the production container image.
 
