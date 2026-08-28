@@ -11,6 +11,11 @@ if (!loopbackHosts.has(host) && !scannerToken) throw new Error('Refusing non-loo
 
 const server = app.listen(port, host, () => runtime.logger.info({ host, port, provider: runtime.providerName, scannerAuth: Boolean(scannerToken) }, 'chat-ai HTTP service listening'))
 runtime.whatsapp.start().catch((error) => runtime.logger.error({ err: error }, 'Initial WhatsApp provider start failed; HTTP service remains available'))
-function shutdown(signal) { runtime.logger.info({ signal }, 'Shutting down'); server.close(() => process.exit(0)); setTimeout(() => process.exit(1), 5000).unref() }
+function shutdown(signal) {
+  runtime.logger.info({ signal }, 'Shutting down')
+  runtime.whatsapp.stop?.()
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(1), 5000).unref()
+}
 process.on('SIGINT', () => shutdown('SIGINT'))
 process.on('SIGTERM', () => shutdown('SIGTERM'))
