@@ -62,7 +62,8 @@ test('marketing agent parses structured stage, score, CTA and reply', async () =
   assert.equal(state.stageName, 'discovery')
   assert.equal(state.leadScore, 72)
   assert.equal(state.nextAction, 'ask_budget')
-  assert.match(systemPrompt, /context-aware conversation marketing flow/i)
+  assert.match(systemPrompt, /verified knowledge facts/i)
+  assert.match(systemPrompt, /Never invent prices, availability, guarantees/i)
   assert.match(systemPrompt, /Do not use false urgency/i)
 })
 

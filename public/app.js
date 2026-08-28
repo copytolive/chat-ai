@@ -1,158 +1,25 @@
-const els = {
-  badge: document.querySelector('#badge'),
-  waState: document.querySelector('#wa-state'),
-  aiState: document.querySelector('#ai-state'),
-  aiModel: document.querySelector('#ai-model'),
-  marketingState: document.querySelector('#marketing-state'),
-  marketingSessions: document.querySelector('#marketing-sessions'),
-  waAccount: document.querySelector('#wa-account'),
-  qrWrap: document.querySelector('#qr-wrap'),
-  qrHelp: document.querySelector('#qr-help'),
-  previewForm: document.querySelector('#preview-form'),
-  previewSession: document.querySelector('#preview-session'),
-  previewInput: document.querySelector('#preview-input'),
-  previewSubmit: document.querySelector('#preview-submit'),
-  previewOutput: document.querySelector('#preview-output'),
-  previewStage: document.querySelector('#preview-stage'),
-  lastUpdated: document.querySelector('#last-updated'),
-}
-
+const $ = (selector) => document.querySelector(selector)
+const els = { launch: $('#launch-state'), badge: $('#badge'), provider: $('#wa-provider'), waState: $('#wa-state'), automation: $('#automation-state'), aiState: $('#ai-state'), aiModel: $('#ai-model'), aiFallback: $('#ai-fallback'), marketingState: $('#marketing-state'), knowledge: $('#knowledge-state'), persistence: $('#persistence-state'), qrWrap: $('#qr-wrap'), qrHelp: $('#qr-help'), previewForm: $('#preview-form'), previewSession: $('#preview-session'), previewInput: $('#preview-input'), previewSubmit: $('#preview-submit'), previewOutput: $('#preview-output'), previewStage: $('#preview-stage'), received: $('#metric-received'), replied: $('#metric-replied'), failures: $('#metric-failures'), handoffs: $('#metric-handoffs'), optouts: $('#metric-optouts'), p95: $('#metric-p95'), lastUpdated: $('#last-updated') }
 let lastQr = null
 let scannerToken = sessionStorage.getItem('chat-ai-scanner-token') || ''
-
-function labelForConnection(connection) {
-  return String(connection || 'unknown').replaceAll('_', ' ').toUpperCase()
-}
-
-function authHeaders(extra = {}) {
-  return scannerToken ? { ...extra, 'x-scanner-token': scannerToken } : extra
-}
-
+function label(value) { return String(value || 'unknown').replaceAll('_', ' ').toUpperCase() }
+function authHeaders(extra = {}) { return scannerToken ? { ...extra, 'x-scanner-token': scannerToken } : extra }
 async function requestJson(url, options = {}, retryAuth = true) {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    ...options,
-    headers: authHeaders(options.headers || {}),
-  })
-
-  if (response.status === 401 && retryAuth) {
-    const entered = window.prompt('Scanner token required')
-    if (entered) {
-      scannerToken = entered.trim()
-      sessionStorage.setItem('chat-ai-scanner-token', scannerToken)
-      return requestJson(url, options, false)
-    }
-  }
-
-  const payload = await response.json().catch(() => ({}))
-  return { response, payload }
+  const response = await fetch(url, { cache: 'no-store', ...options, headers: authHeaders(options.headers || {}) })
+  if (response.status === 401 && retryAuth) { const entered = window.prompt('Scanner token required'); if (entered) { scannerToken = entered.trim(); sessionStorage.setItem('chat-ai-scanner-token', scannerToken); return requestJson(url, options, false) } }
+  return { response, payload: await response.json().catch(() => ({})) }
 }
-
-function getJson(url) {
-  return requestJson(url)
-}
-
-function postJson(url, body) {
-  return requestJson(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
-
 function renderStatus(payload) {
-  const wa = payload.whatsapp || {}
-  const ai = payload.ai || {}
-  const marketing = payload.marketing || {}
-  const connection = wa.connection || 'unknown'
-
-  els.waState.textContent = labelForConnection(connection)
-  els.aiState.textContent = ai.configured ? 'READY' : ai.enabled ? 'MISCONFIGURED' : 'DISABLED'
-  els.aiModel.textContent = ai.model || '—'
-  els.marketingState.textContent = marketing.configured ? 'READY' : marketing.enabled ? 'MISCONFIGURED' : 'DISABLED'
-  els.marketingSessions.textContent = Number.isFinite(marketing.activeSessions) ? String(marketing.activeSessions) : '—'
-  els.waAccount.textContent = wa.accountPaired ? 'PAIRED' : '—'
-  els.badge.textContent = connection === 'open' ? 'CONNECTED' : connection === 'qr' ? 'SCAN QR' : labelForConnection(connection)
-  els.badge.dataset.state = connection
-  els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`
+  const wa = payload.whatsapp || {}, ai = payload.ai || {}, marketing = payload.marketing || {}, metrics = payload.metrics || {}, connection = wa.connection || 'unknown'
+  els.provider.textContent = label(wa.provider || 'unknown'); els.waState.textContent = label(connection); els.automation.textContent = payload.automation?.enabled ? 'ENABLED' : 'KILL SWITCH OFF'; els.aiState.textContent = ai.configured ? 'READY' : ai.enabled ? 'MISCONFIGURED' : 'DISABLED'; els.aiModel.textContent = ai.model || '—'; els.aiFallback.textContent = ai.fallbackConfigured ? `READY · ${ai.fallbackModel || 'configured'}` : 'NOT CONFIGURED'; els.marketingState.textContent = marketing.configured ? 'READY' : marketing.enabled ? 'MISCONFIGURED' : 'DISABLED'; els.knowledge.textContent = `${marketing.verifiedKnowledgeFacts || 0} VERIFIED FACTS`; els.persistence.textContent = label(marketing.sessionPersistence || 'unknown'); els.received.textContent = String(metrics.messagesReceived || 0); els.replied.textContent = String(metrics.repliesSent || 0); els.failures.textContent = String(metrics.failures || 0); els.handoffs.textContent = String(metrics.handoffs || 0); els.optouts.textContent = String(metrics.optOuts || 0); els.p95.textContent = Number.isFinite(metrics.p95LatencyMs) ? `${metrics.p95LatencyMs} ms` : '—'; els.badge.textContent = connection === 'open' ? 'CONNECTED' : label(connection); els.badge.dataset.state = ['open','ready'].includes(connection) ? 'open' : connection; els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`
 }
-
-async function refreshQr(status) {
-  if (status?.whatsapp?.connection === 'open') {
-    lastQr = null
-    els.qrWrap.innerHTML = '<div class="success">Connected</div>'
-    els.qrHelp.textContent = 'WhatsApp is connected. Incoming accepted text can now be processed.'
-    return
-  }
-
-  if (!status?.whatsapp?.hasQr) {
-    lastQr = null
-    els.qrWrap.innerHTML = '<div class="placeholder">Waiting for a fresh QR…</div>'
-    els.qrHelp.textContent = 'The service is connecting. QR codes expire and refresh automatically.'
-    return
-  }
-
-  const { response, payload } = await getJson('/qr')
-  if (!response.ok || !payload.qr) return
-  if (payload.qr === lastQr) return
-  lastQr = payload.qr
-
-  const img = document.createElement('img')
-  img.src = payload.qr
-  img.alt = 'WhatsApp pairing QR code'
-  img.width = 360
-  img.height = 360
-  els.qrWrap.replaceChildren(img)
-  els.qrHelp.textContent = 'Open WhatsApp → Linked devices → Link a device, then scan this QR.'
+async function renderReadiness() { const { response, payload } = await requestJson('/ready', {}, false); els.launch.textContent = response.ok && payload.ok ? 'LAUNCH READY' : 'NOT READY'; els.launch.dataset.state = response.ok && payload.ok ? 'ready' : 'error' }
+async function refreshChannel(status) {
+  if (status?.whatsapp?.provider === 'cloud') { lastQr = null; els.qrWrap.innerHTML = '<div class="success">Official Cloud API</div>'; els.qrHelp.textContent = 'Webhook mode is active. No browser QR session is required.'; return }
+  if (status?.whatsapp?.connection === 'open') { lastQr = null; els.qrWrap.innerHTML = '<div class="success">Connected</div>'; els.qrHelp.textContent = 'Baileys development session is connected.'; return }
+  if (!status?.whatsapp?.hasQr) { lastQr = null; els.qrWrap.innerHTML = '<div class="placeholder">Waiting for a fresh QR…</div>'; return }
+  const { response, payload } = await requestJson('/qr'); if (!response.ok || !payload.qr || payload.qr === lastQr) return; lastQr = payload.qr; const img = document.createElement('img'); img.src = payload.qr; img.alt = 'WhatsApp pairing QR code'; img.width = 360; img.height = 360; els.qrWrap.replaceChildren(img)
 }
-
-async function refresh() {
-  try {
-    const { response, payload } = await getJson('/status')
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    renderStatus(payload)
-    await refreshQr(payload)
-  } catch (error) {
-    els.badge.textContent = 'OFFLINE'
-    els.badge.dataset.state = 'error'
-    els.lastUpdated.textContent = `Status error: ${error.message}`
-  }
-}
-
-els.previewForm?.addEventListener('submit', async (event) => {
-  event.preventDefault()
-  const text = els.previewInput.value.trim()
-  if (!text) return
-
-  els.previewSubmit.disabled = true
-  els.previewSubmit.textContent = 'Thinking…'
-  els.previewOutput.textContent = 'Processing…'
-
-  try {
-    const { response, payload } = await postJson('/marketing/preview', {
-      sessionId: els.previewSession.value.trim() || 'demo',
-      text,
-    })
-
-    if (!response.ok) {
-      const error = payload.error || `HTTP ${response.status}`
-      throw new Error(error)
-    }
-
-    els.previewOutput.textContent = payload.reply || '(automation paused)'
-    const stageName = payload.state?.stageName || 'paused'
-    const score = Number.isFinite(payload.state?.leadScore) ? ` · ${payload.state.leadScore}/100` : ''
-    els.previewStage.textContent = `${stageName.toUpperCase()}${score}`
-    els.previewInput.value = ''
-    await refresh()
-  } catch (error) {
-    els.previewOutput.textContent = `Preview error: ${error.message}`
-    els.previewStage.textContent = 'ERROR'
-  } finally {
-    els.previewSubmit.disabled = false
-    els.previewSubmit.textContent = 'Send to agent'
-  }
-})
-
-refresh()
-setInterval(refresh, 2500)
+async function refresh() { try { const { response, payload } = await requestJson('/status'); if (!response.ok) throw new Error(`HTTP ${response.status}`); renderStatus(payload); await Promise.all([refreshChannel(payload), renderReadiness()]) } catch (error) { els.badge.textContent = 'OFFLINE'; els.badge.dataset.state = 'error'; els.launch.textContent = 'NOT READY'; els.launch.dataset.state = 'error'; els.lastUpdated.textContent = `Status error: ${error.message}` } }
+els.previewForm?.addEventListener('submit', async (event) => { event.preventDefault(); const text = els.previewInput.value.trim(); if (!text) return; els.previewSubmit.disabled = true; els.previewSubmit.textContent = 'Thinking…'; els.previewOutput.textContent = 'Processing…'; try { const { response, payload } = await requestJson('/marketing/preview', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ sessionId:els.previewSession.value.trim() || 'demo', text }) }); if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`); els.previewOutput.textContent = payload.reply || '(automation paused)'; const stageName = payload.state?.stageName || payload.event || 'paused'; const score = Number.isFinite(payload.state?.leadScore) ? ` · ${payload.state.leadScore}/100` : ''; els.previewStage.textContent = `${label(stageName)}${score}`; els.previewInput.value = ''; await refresh() } catch (error) { els.previewOutput.textContent = `Preview error: ${error.message}`; els.previewStage.textContent = 'ERROR' } finally { els.previewSubmit.disabled = false; els.previewSubmit.textContent = 'Send to agent' } })
+refresh(); setInterval(refresh, 2500)
