@@ -9,6 +9,7 @@ import { generateReply, getAIStatus } from './ai.js'
 import { createMarketingAgent } from './marketing.js'
 import { createMetrics } from './metrics.js'
 import { createRateLimit } from './rate-limit.js'
+import { createHandoffService } from './handoff.js'
 
 function envBool(name, fallback = false) { const raw = process.env[name]; if (raw == null || raw === '') return fallback; return /^(1|true|yes|on)$/i.test(raw) }
 function safeEqual(a, b) { const left = String(a || ''); const right = String(b || ''); return Boolean(left && right && left.length === right.length && left === right) }
@@ -16,14 +17,19 @@ function safeEqual(a, b) { const left = String(a || ''); const right = String(b 
 export function createRuntime({ logger = pino({ level: process.env.LOG_LEVEL || 'info' }) } = {}) {
   const metrics = createMetrics()
   const marketing = createMarketingAgent()
+  const handoff = createHandoffService({ logger })
   const providerName = String(process.env.WA_PROVIDER || 'baileys').trim().toLowerCase()
   const control = { automationEnabled: envBool('AUTOMATION_ENABLED', false) }
-  const onMessage = async ({ jid, text }) => {
+  const onMessage = async ({ jid, text, messageId }) => {
     if (!control.automationEnabled) return null
     if (marketing.isEnabled()) {
       const result = await marketing.processDetailed({ jid, text })
       if (result.event === 'opt_out') metrics.inc('optOuts')
-      if (result.event === 'human_handoff') metrics.inc('handoffs')
+      if (result.event === 'human_handoff') {
+        metrics.inc('handoffs')
+        try { handoff.enqueue({ contactId: jid, text, state: result.state, messageId }) }
+        catch (error) { metrics.inc('failures'); logger.error({ err: error }, 'Human handoff could not be queued') }
+      }
       return result.reply
     }
     return generateReply(text)
@@ -33,11 +39,11 @@ export function createRuntime({ logger = pino({ level: process.env.LOG_LEVEL || 
   else if (providerName === 'baileys') whatsapp = createWhatsAppService({ onMessage, logger, metrics })
   else throw new Error(`Unsupported WA_PROVIDER: ${providerName}`)
   if (process.env.NODE_ENV === 'production' && envBool('PRODUCTION_REQUIRE_CLOUD', true) && providerName !== 'cloud' && !envBool('ALLOW_UNOFFICIAL_WA', false)) throw new Error('Production requires WA_PROVIDER=cloud unless ALLOW_UNOFFICIAL_WA=true is explicitly set')
-  return { logger, metrics, marketing, whatsapp, control, providerName }
+  return { logger, metrics, marketing, handoff, whatsapp, control, providerName }
 }
 
 export function createApp({ runtime = createRuntime() } = {}) {
-  const { logger, metrics, marketing, whatsapp, control, providerName } = runtime
+  const { logger, metrics, marketing, handoff, whatsapp, control, providerName } = runtime
   const app = express()
   const scannerToken = String(process.env.SCANNER_TOKEN || '').trim()
   const adminToken = String(process.env.ADMIN_TOKEN || '').trim()
@@ -56,12 +62,13 @@ export function createApp({ runtime = createRuntime() } = {}) {
   function adminAuth(req, res, next) { if (!adminToken) return res.status(403).json({ ok: false, error: 'ADMIN_MUTATIONS_DISABLED' }); if (!safeEqual(req.get('x-admin-token'), adminToken)) return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' }); return next() }
   app.get('/health', (_req, res) => res.json({ ok: true, service: 'chat-ai', version: process.env.RELEASE_VERSION || 'dev', uptimeSeconds: Math.round(process.uptime()), now: new Date().toISOString() }))
   app.get('/ready', (_req, res) => {
-    const ai = getAIStatus(); const marketingStatus = marketing.getStatus(); const wa = whatsapp.getState(); const requireMarketing = envBool('REQUIRE_MARKETING_FOR_READY', true)
+    const ai = getAIStatus(); const marketingStatus = marketing.getStatus(); const wa = whatsapp.getState(); const handoffStatus = handoff.getState(); const requireMarketing = envBool('REQUIRE_MARKETING_FOR_READY', true); const requireHandoff = envBool('REQUIRE_HANDOFF_FOR_READY', process.env.NODE_ENV === 'production')
     const waReady = providerName === 'cloud' ? wa.configured === true : wa.connection === 'open'
-    const ready = Boolean(ai.configured && waReady && control.automationEnabled && (!requireMarketing || marketingStatus.configured))
-    return res.status(ready ? 200 : 503).json({ ok: ready, automationEnabled: control.automationEnabled, provider: providerName, checks: { ai: ai.configured, whatsapp: waReady, marketing: requireMarketing ? marketingStatus.configured : true } })
+    const handoffReady = requireHandoff ? handoffStatus.configured : true
+    const ready = Boolean(ai.configured && waReady && handoffReady && control.automationEnabled && (!requireMarketing || marketingStatus.configured))
+    return res.status(ready ? 200 : 503).json({ ok: ready, automationEnabled: control.automationEnabled, provider: providerName, checks: { ai: ai.configured, whatsapp: waReady, marketing: requireMarketing ? marketingStatus.configured : true, handoff: handoffReady } })
   })
-  app.get('/status', scannerAuth, (_req, res) => res.json({ ok: true, release: process.env.RELEASE_VERSION || 'dev', automation: { enabled: control.automationEnabled }, whatsapp: whatsapp.getState(), ai: getAIStatus(), marketing: marketing.getStatus(), metrics: metrics.snapshot() }))
+  app.get('/status', scannerAuth, (_req, res) => res.json({ ok: true, release: process.env.RELEASE_VERSION || 'dev', automation: { enabled: control.automationEnabled }, whatsapp: whatsapp.getState(), ai: getAIStatus(), marketing: marketing.getStatus(), handoff: handoff.getState(), metrics: metrics.snapshot() }))
   app.get('/metrics', scannerAuth, (_req, res) => res.json({ ok: true, metrics: metrics.snapshot() }))
   app.get('/qr', scannerAuth, async (_req, res) => {
     const qr = whatsapp.getQr?.()
