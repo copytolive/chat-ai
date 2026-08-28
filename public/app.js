@@ -4,7 +4,7 @@ let lastQr = null
 let scannerToken = sessionStorage.getItem('chat-ai-scanner-token') || ''
 const legacyPrefix = window.location.pathname === '/wa-scanner' || window.location.pathname.startsWith('/wa-scanner/') ? '/wa-scanner' : ''
 function apiPath(value) { const path = String(value || '').startsWith('/') ? String(value) : `/${value}`; return `${legacyPrefix}${path}` }
-function label(value) { return String(value || 'unknown').replaceAll('_', ' ').toUpperCase() }
+function label(value) { return String(value || 'unknown').replaceAll('_', ' ').replaceAll('-', ' ').toUpperCase() }
 function authHeaders(extra = {}) { return scannerToken ? { ...extra, 'x-scanner-token': scannerToken } : extra }
 async function requestJson(url, options = {}, retryAuth = true) {
   const response = await fetch(apiPath(url), { cache: 'no-store', ...options, headers: authHeaders(options.headers || {}) })
