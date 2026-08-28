@@ -10,10 +10,5 @@
   },
   "postCreateCommand": "npm ci --ignore-scripts",
   "postStartCommand": "bash scripts/codespace-start.sh",
-  "postAttachCommand": "bash scripts/codespace-start.sh",
-  "customizations": {
-    "codespaces": {
-      "openFiles": ["GITHUB_SCAN.md"]
-    }
-  }
+  "postAttachCommand": "bash scripts/codespace-start.sh"
 }

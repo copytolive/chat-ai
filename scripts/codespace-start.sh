@@ -15,6 +15,24 @@ MOCK_PID_FILE="$RUNTIME_DIR/mock-ai.pid"
 mkdir -p "$WA_DIR" "$HANDOFF_DIR"
 chmod 700 "$RUNTIME_DIR" "$WA_DIR" "$HANDOFF_DIR" 2>/dev/null || true
 
+scanner_url() {
+  bash "$ROOT/scripts/codespace-url.sh" 3847 /wa-scanner/
+}
+
+open_scanner_ui() {
+  local url
+  url="$(scanner_url)"
+  echo "Scanner UI: $url"
+
+  if [[ -n "${CODESPACE_NAME:-}" ]]; then
+    if command -v code >/dev/null 2>&1; then
+      ( sleep 1; code --open-url "$url" >/dev/null 2>&1 || true ) &
+    elif [[ -n "${BROWSER:-}" ]]; then
+      ( sleep 1; "$BROWSER" "$url" >/dev/null 2>&1 || true ) &
+    fi
+  fi
+}
+
 if [[ ! -s "$KEY_FILE" ]]; then
   node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" > "$KEY_FILE"
   chmod 600 "$KEY_FILE"
@@ -23,7 +41,7 @@ fi
 if curl -fsS http://127.0.0.1:3847/health >/dev/null 2>&1; then
   echo
   echo "CopyToLive WhatsApp scanner is already running."
-  echo "Open: http://127.0.0.1:3847/wa-scanner/"
+  open_scanner_ui
   exit 0
 fi
 
@@ -87,7 +105,7 @@ for _ in $(seq 1 30); do
     echo "============================================================"
     echo " CopyToLive WhatsApp Scanner is running in GitHub Codespaces"
     echo "============================================================"
-    echo "Open: http://127.0.0.1:3847/wa-scanner/"
+    open_scanner_ui
     echo "Then scan: WhatsApp -> Linked devices -> Link a device"
     echo "The forwarded Codespaces port should remain PRIVATE."
     echo "WhatsApp session: $WA_DIR"
