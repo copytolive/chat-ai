@@ -39,6 +39,7 @@ jobs:
           WA_CLOUD_APP_SECRET: secret-ci
           WA_QUEUE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           WA_QUEUE_DIR: /tmp/chat-ai-ci-webhook-queue
+          HANDOFF_MODE: webhook
           HANDOFF_WEBHOOK_URL: http://127.0.0.1:9999/handoff
           HANDOFF_WEBHOOK_SECRET: handoff-ci-secret
           HANDOFF_QUEUE_DIR: /tmp/chat-ai-ci-handoff-queue
@@ -73,18 +74,24 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Start browser fixture
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Start Cloud and QR-scan browser fixtures
         run: |
           node scripts/browser-harness.mjs > /tmp/browser-harness.log 2>&1 &
           echo $! > /tmp/browser-harness.pid
+          node scripts/browser-scan-harness.mjs > /tmp/browser-scan-harness.log 2>&1 &
+          echo $! > /tmp/browser-scan-harness.pid
           for i in {1..20}; do curl -fsS http://127.0.0.1:8765/status && break || sleep 1; done
-      - name: Chromium browser acceptance
+          for i in {1..20}; do curl -fsS http://127.0.0.1:8766/status && break || sleep 1; done
+      - name: Chromium Cloud browser acceptance
         run: |
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
           test -n "$CHROME"
@@ -94,8 +101,28 @@ jobs:
           grep -q 'Browser acceptance reply' browser-dom.html
           grep -q 'DISCOVERY · 42/100' browser-dom.html
           grep -q 'ENCRYPTED · 0 PENDING' browser-dom.html
-          grep -q 'READY · ENCRYPTED OUTBOX' browser-dom.html
+          grep -q 'READY · LOCAL INBOX · ENCRYPTED' browser-dom.html
           grep -q 'DURABLE JSON SINGLE INSTANCE HASHED CONTACT ID' browser-dom.html
+      - name: Chromium QR scan before-pair acceptance
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=4000 --dump-dom http://127.0.0.1:8766/ > browser-scan-qr-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=4000 --screenshot=browser-scan-qr.png http://127.0.0.1:8766/
+          grep -q 'WhatsApp pairing QR code' browser-scan-qr-dom.html
+          grep -q 'NOT READY' browser-scan-qr-dom.html
+          grep -q 'AUTO-RUN ENABLED' browser-scan-qr-dom.html
+          grep -q 'SESSION PERSISTENT' browser-scan-qr-dom.html
+      - name: Chromium QR scan connected auto-run acceptance
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8766/simulate-scan | grep '"connected":true'
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=4000 --dump-dom http://127.0.0.1:8766/ > browser-scan-connected-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=4000 --screenshot=browser-scan-connected.png http://127.0.0.1:8766/
+          grep -q 'LAUNCH READY' browser-scan-connected-dom.html
+          grep -q 'CONNECTED' browser-scan-connected-dom.html
+          grep -q 'AUTO-RUN ENABLED' browser-scan-connected-dom.html
+          grep -q 'Connected · Auto-run' browser-scan-connected-dom.html
+          grep -q 'WA /data/wa-auth' browser-scan-connected-dom.html
       - name: Upload browser evidence
         uses: actions/upload-artifact@v4
         with:
@@ -103,7 +130,12 @@ jobs:
           path: |
             browser-dom.html
             browser-launch.png
+            browser-scan-qr-dom.html
+            browser-scan-qr.png
+            browser-scan-connected-dom.html
+            browser-scan-connected.png
             /tmp/browser-harness.log
+            /tmp/browser-scan-harness.log
 
   docker:
     runs-on: ubuntu-latest
