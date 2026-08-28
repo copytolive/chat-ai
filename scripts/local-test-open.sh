@@ -37,11 +37,8 @@ command -v lsof >/dev/null 2>&1 || fail "lsof tidak tersedia."
 NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])")"
 [[ "$NODE_MAJOR" -ge 20 ]] || fail "Node.js terlalu lama ($(node -v)). Gunakan Node.js 20+."
 
-# Stop only processes previously launched by this test launcher.
 stop_pidfile "$APP_PID_FILE"
 stop_pidfile "$MOCK_PID_FILE"
-
-# Never mistake another local service for this scanner.
 port_in_use "$PORT" && fail "Port $PORT sedang dipakai aplikasi lain. Tutup aplikasi itu lalu jalankan lagi."
 port_in_use "$MOCK_PORT" && fail "Port $MOCK_PORT sedang dipakai aplikasi lain. Jalankan lagi dengan: MOCK_AI_PORT=40000 bash START_CHAT_AI.command"
 
@@ -72,11 +69,15 @@ say "[3/5] Start test AI..."
 nohup env MOCK_AI_PORT="$MOCK_PORT" node scripts/mock-ai.mjs > "$RUNTIME_DIR/mock-ai.log" 2>&1 &
 echo $! > "$MOCK_PID_FILE"
 for _ in $(seq 1 30); do
-  curl -fsS "http://127.0.0.1:${MOCK_PORT}/health" >/dev/null 2>&1 && break
+  if curl -fsS -X POST "http://127.0.0.1:${MOCK_PORT}/v1/chat/completions" \
+    -H 'content-type: application/json' \
+    -d '{"messages":[{"role":"user","content":"ping"}]}' >/dev/null 2>&1; then
+    break
+  fi
   kill -0 "$(cat "$MOCK_PID_FILE")" 2>/dev/null || { tail -n 50 "$RUNTIME_DIR/mock-ai.log" >&2 || true; fail "Test AI gagal start."; }
   sleep 0.2
 done
-kill -0 "$(cat "$MOCK_PID_FILE")" 2>/dev/null || fail "Test AI berhenti sebelum scanner start."
+curl -fsS -X POST "http://127.0.0.1:${MOCK_PORT}/v1/chat/completions" -H 'content-type: application/json' -d '{"messages":[{"role":"user","content":"ping"}]}' >/dev/null 2>&1 || fail "Test AI tidak ready."
 
 export NODE_ENV=development HOST=127.0.0.1 PORT="$PORT" RELEASE_VERSION=local-wa-test AUTOMATION_ENABLED=true
 export REQUIRE_MARKETING_FOR_READY=true REQUIRE_HANDOFF_FOR_READY=true
