@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector)
-const els = { launch: $('#launch-state'), badge: $('#badge'), provider: $('#wa-provider'), waState: $('#wa-state'), automation: $('#automation-state'), aiState: $('#ai-state'), aiModel: $('#ai-model'), aiFallback: $('#ai-fallback'), marketingState: $('#marketing-state'), knowledge: $('#knowledge-state'), persistence: $('#persistence-state'), qrWrap: $('#qr-wrap'), qrHelp: $('#qr-help'), previewForm: $('#preview-form'), previewSession: $('#preview-session'), previewInput: $('#preview-input'), previewSubmit: $('#preview-submit'), previewOutput: $('#preview-output'), previewStage: $('#preview-stage'), received: $('#metric-received'), replied: $('#metric-replied'), failures: $('#metric-failures'), handoffs: $('#metric-handoffs'), optouts: $('#metric-optouts'), p95: $('#metric-p95'), lastUpdated: $('#last-updated') }
+const els = { launch: $('#launch-state'), badge: $('#badge'), provider: $('#wa-provider'), waState: $('#wa-state'), queue: $('#queue-state'), automation: $('#automation-state'), aiState: $('#ai-state'), aiModel: $('#ai-model'), aiFallback: $('#ai-fallback'), marketingState: $('#marketing-state'), handoff: $('#handoff-state'), knowledge: $('#knowledge-state'), persistence: $('#persistence-state'), qrWrap: $('#qr-wrap'), qrHelp: $('#qr-help'), previewForm: $('#preview-form'), previewSession: $('#preview-session'), previewInput: $('#preview-input'), previewSubmit: $('#preview-submit'), previewOutput: $('#preview-output'), previewStage: $('#preview-stage'), received: $('#metric-received'), replied: $('#metric-replied'), failures: $('#metric-failures'), handoffs: $('#metric-handoffs'), optouts: $('#metric-optouts'), p95: $('#metric-p95'), lastUpdated: $('#last-updated') }
 let lastQr = null
 let scannerToken = sessionStorage.getItem('chat-ai-scanner-token') || ''
 function label(value) { return String(value || 'unknown').replaceAll('_', ' ').toUpperCase() }
@@ -10,12 +10,25 @@ async function requestJson(url, options = {}, retryAuth = true) {
   return { response, payload: await response.json().catch(() => ({})) }
 }
 function renderStatus(payload) {
-  const wa = payload.whatsapp || {}, ai = payload.ai || {}, marketing = payload.marketing || {}, metrics = payload.metrics || {}, connection = wa.connection || 'unknown'
-  els.provider.textContent = label(wa.provider || 'unknown'); els.waState.textContent = label(connection); els.automation.textContent = payload.automation?.enabled ? 'ENABLED' : 'KILL SWITCH OFF'; els.aiState.textContent = ai.configured ? 'READY' : ai.enabled ? 'MISCONFIGURED' : 'DISABLED'; els.aiModel.textContent = ai.model || '—'; els.aiFallback.textContent = ai.fallbackConfigured ? `READY · ${ai.fallbackModel || 'configured'}` : 'NOT CONFIGURED'; els.marketingState.textContent = marketing.configured ? 'READY' : marketing.enabled ? 'MISCONFIGURED' : 'DISABLED'; els.knowledge.textContent = `${marketing.verifiedKnowledgeFacts || 0} VERIFIED FACTS`; els.persistence.textContent = label(marketing.sessionPersistence || 'unknown'); els.received.textContent = String(metrics.messagesReceived || 0); els.replied.textContent = String(metrics.repliesSent || 0); els.failures.textContent = String(metrics.failures || 0); els.handoffs.textContent = String(metrics.handoffs || 0); els.optouts.textContent = String(metrics.optOuts || 0); els.p95.textContent = Number.isFinite(metrics.p95LatencyMs) ? `${metrics.p95LatencyMs} ms` : '—'; els.badge.textContent = connection === 'open' ? 'CONNECTED' : label(connection); els.badge.dataset.state = ['open','ready'].includes(connection) ? 'open' : connection; els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`
+  const wa = payload.whatsapp || {}, ai = payload.ai || {}, marketing = payload.marketing || {}, handoff = payload.handoff || {}, metrics = payload.metrics || {}, connection = wa.connection || 'unknown'
+  els.provider.textContent = label(wa.provider || 'unknown')
+  els.waState.textContent = label(connection)
+  const queue = wa.queue || {}
+  els.queue.textContent = queue.encrypted ? `ENCRYPTED · ${queue.pending || 0} PENDING` : wa.provider === 'cloud' ? 'NOT ENCRYPTED' : 'N/A'
+  els.automation.textContent = payload.automation?.enabled ? 'ENABLED' : 'KILL SWITCH OFF'
+  els.aiState.textContent = ai.configured ? 'READY' : ai.enabled ? 'MISCONFIGURED' : 'DISABLED'
+  els.aiModel.textContent = ai.model || '—'
+  els.aiFallback.textContent = ai.fallbackConfigured ? `READY · ${ai.fallbackModel || 'configured'}` : 'NOT CONFIGURED'
+  els.marketingState.textContent = marketing.configured ? 'READY' : marketing.enabled ? 'MISCONFIGURED' : 'DISABLED'
+  els.handoff.textContent = handoff.configured ? `READY · ${handoff.queue?.encrypted ? 'ENCRYPTED OUTBOX' : 'OUTBOX'}` : 'NOT CONFIGURED'
+  els.knowledge.textContent = `${marketing.verifiedKnowledgeFacts || 0} VERIFIED FACTS`
+  els.persistence.textContent = label(marketing.sessionPersistence || 'unknown')
+  els.received.textContent = String(metrics.messagesReceived || 0); els.replied.textContent = String(metrics.repliesSent || 0); els.failures.textContent = String(metrics.failures || 0); els.handoffs.textContent = String(metrics.handoffs || 0); els.optouts.textContent = String(metrics.optOuts || 0); els.p95.textContent = Number.isFinite(metrics.p95LatencyMs) ? `${metrics.p95LatencyMs} ms` : '—'
+  els.badge.textContent = connection === 'open' ? 'CONNECTED' : label(connection); els.badge.dataset.state = ['open','ready'].includes(connection) ? 'open' : connection; els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`
 }
 async function renderReadiness() { const { response, payload } = await requestJson('/ready', {}, false); els.launch.textContent = response.ok && payload.ok ? 'LAUNCH READY' : 'NOT READY'; els.launch.dataset.state = response.ok && payload.ok ? 'ready' : 'error' }
 async function refreshChannel(status) {
-  if (status?.whatsapp?.provider === 'cloud') { lastQr = null; els.qrWrap.innerHTML = '<div class="success">Official Cloud API</div>'; els.qrHelp.textContent = 'Webhook mode is active. No browser QR session is required.'; return }
+  if (status?.whatsapp?.provider === 'cloud') { lastQr = null; els.qrWrap.innerHTML = '<div class="success">Official Cloud API</div>'; els.qrHelp.textContent = 'Webhook mode is active. Inbound messages are signed, durably queued, encrypted at rest, and deduplicated before processing.'; return }
   if (status?.whatsapp?.connection === 'open') { lastQr = null; els.qrWrap.innerHTML = '<div class="success">Connected</div>'; els.qrHelp.textContent = 'Baileys development session is connected.'; return }
   if (!status?.whatsapp?.hasQr) { lastQr = null; els.qrWrap.innerHTML = '<div class="placeholder">Waiting for a fresh QR…</div>'; return }
   const { response, payload } = await requestJson('/qr'); if (!response.ok || !payload.qr || payload.qr === lastQr) return; lastQr = payload.qr; const img = document.createElement('img'); img.src = payload.qr; img.alt = 'WhatsApp pairing QR code'; img.width = 360; img.height = 360; els.qrWrap.replaceChildren(img)
