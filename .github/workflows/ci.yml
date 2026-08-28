@@ -31,6 +31,7 @@ jobs:
           PORT: 3847
           RELEASE_VERSION: ci
           AUTOMATION_ENABLED: 'true'
+          REQUIRE_HANDOFF_FOR_READY: 'true'
           WA_PROVIDER: cloud
           WA_CLOUD_ACCESS_TOKEN: test-token
           WA_CLOUD_PHONE_NUMBER_ID: '123456789'
@@ -38,6 +39,9 @@ jobs:
           WA_CLOUD_APP_SECRET: secret-ci
           WA_QUEUE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           WA_QUEUE_DIR: /tmp/chat-ai-ci-webhook-queue
+          HANDOFF_WEBHOOK_URL: http://127.0.0.1:9999/handoff
+          HANDOFF_WEBHOOK_SECRET: handoff-ci-secret
+          HANDOFF_QUEUE_DIR: /tmp/chat-ai-ci-handoff-queue
           AI_ENABLED: 'true'
           AI_BASE_URL: http://127.0.0.1:9999/v1
           AI_MODEL: mock-primary
@@ -48,13 +52,13 @@ jobs:
           KNOWLEDGE_FACTS: Verified CI fact
           STATE_FILE: /tmp/chat-ai-ci-state.json
         run: |
-          rm -rf /tmp/chat-ai-ci-webhook-queue /tmp/chat-ai-ci-state.json
+          rm -rf /tmp/chat-ai-ci-webhook-queue /tmp/chat-ai-ci-handoff-queue /tmp/chat-ai-ci-state.json
           node scripts/mock-ai.mjs > /tmp/mock-ai.log 2>&1 &
           echo $! > /tmp/mock-ai.pid
           node src/index.js > /tmp/chat-ai.log 2>&1 &
           echo $! > /tmp/chat-ai.pid
           for i in {1..30}; do curl -fsS http://127.0.0.1:3847/health && break || sleep 1; done
-          curl -fsS http://127.0.0.1:3847/ready
+          curl -fsS http://127.0.0.1:3847/ready | grep '"handoff":true'
           curl -fsS 'http://127.0.0.1:3847/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-ci&hub.challenge=CI_OK' | grep CI_OK
           curl -fsS -H 'content-type: application/json' -d '{"sessionId":"ci","text":"Saya tertarik untuk tim saya"}' http://127.0.0.1:3847/marketing/preview | grep 'Mock validated reply'
           LAUNCH_BASE_URL=http://127.0.0.1:3847 node scripts/launch-doctor.mjs
@@ -84,11 +88,14 @@ jobs:
         run: |
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
           test -n "$CHROME"
-          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1400 --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/ > browser-dom.html
-          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1400 --virtual-time-budget=5000 --screenshot=browser-launch.png http://127.0.0.1:8765/
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/ > browser-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=5000 --screenshot=browser-launch.png http://127.0.0.1:8765/
           grep -q 'LAUNCH READY' browser-dom.html
           grep -q 'Browser acceptance reply' browser-dom.html
           grep -q 'DISCOVERY · 42/100' browser-dom.html
+          grep -q 'ENCRYPTED · 0 PENDING' browser-dom.html
+          grep -q 'READY · ENCRYPTED OUTBOX' browser-dom.html
+          grep -q 'DURABLE JSON SINGLE INSTANCE HASHED CONTACT ID' browser-dom.html
       - name: Upload browser evidence
         uses: actions/upload-artifact@v4
         with:
