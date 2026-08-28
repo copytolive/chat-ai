@@ -11,14 +11,15 @@ The verified legacy deployment exposed a WhatsApp scanner service behind `/wa-sc
 ## Features
 
 - WhatsApp Web connection with QR pairing.
-- `GET /health` and `GET /status` runtime checks.
-- `GET /qr` returns the current QR as JSON and a data URL for a scanner UI.
+- `GET /health` and protected `GET /status` runtime checks.
+- Protected `GET /qr` returns the current QR as a data URL for the scanner UI.
 - Minimal scanner page at `/`.
 - Incoming text messages can be answered by an OpenAI-compatible AI endpoint.
 - Works with local OpenAI-compatible servers such as Ollama-compatible gateways when configured.
 - Allowlist controls for JIDs and group replies.
 - Session data is stored outside source by default and is explicitly ignored by Git.
 - No bulk-send, contact scraping, stealth, or spam features.
+- Public status never exposes the WhatsApp account ID, auth directory, AI endpoint URL, API key, or raw error detail.
 
 ## Requirements
 
@@ -34,18 +35,28 @@ npm install
 npm start
 ```
 
-Open `http://localhost:3847`, scan the QR code, then send a normal text message to the connected WhatsApp account.
+The safe default listens only on `127.0.0.1:3847`. Open `http://127.0.0.1:3847`, scan the QR code, then send a normal text message to the connected WhatsApp account.
 
 For local AI, point `AI_BASE_URL` at an OpenAI-compatible local endpoint and set `AI_MODEL`. `AI_API_KEY` may be left blank only when your local endpoint does not require one.
+
+## Public / reverse-proxy deployment
+
+Do **not** expose an unprotected WhatsApp QR scanner to the internet.
+
+- Keep `HOST=127.0.0.1` when Caddy/Nginx runs on the same host.
+- If you intentionally bind a non-loopback interface, `SCANNER_TOKEN` is mandatory and the service refuses to start without it.
+- The UI asks for `SCANNER_TOKEN` only when the protected API returns `401`; the value is kept in browser `sessionStorage`.
+- Put HTTPS and, ideally, an additional identity/auth layer in front of `/wa-scanner/*`.
+- Keep `ADMIN_TOKEN` separate; if blank, `POST /reconnect` is disabled.
 
 ## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/health` | Process health |
-| GET | `/status` | WhatsApp + AI configuration state |
-| GET | `/qr` | Current pairing QR, if available |
-| POST | `/reconnect` | Recreate the WhatsApp socket |
+| GET | `/health` | Non-sensitive process health |
+| GET | `/status` | WhatsApp + AI state; protected when `SCANNER_TOKEN` is set |
+| GET | `/qr` | Current pairing QR; protected when `SCANNER_TOKEN` is set |
+| POST | `/reconnect` | Manual reconnect; requires scanner + admin tokens |
 | GET | `/` | Scanner/status UI |
 
 When this service is behind a reverse proxy, mount it under `/wa-scanner/*` and strip that prefix before forwarding, matching the verified legacy deployment contract.
@@ -55,6 +66,9 @@ When this service is behind a reverse proxy, mount it under `/wa-scanner/*` and 
 See `.env.example`. Important controls:
 
 - `PORT=3847`
+- `HOST=127.0.0.1`
+- `SCANNER_TOKEN` — mandatory when binding a non-loopback interface.
+- `ADMIN_TOKEN` — optional; enables the manual reconnect endpoint.
 - `WA_AUTH_DIR` — keep this outside the repository in production.
 - `WA_REPLY_GROUPS=false` — groups are ignored by default.
 - `WA_ALLOWED_JIDS` — optional comma-separated allowlist.
@@ -85,7 +99,8 @@ This project uses an unofficial WhatsApp Web library. Use it only for accounts a
 
 - [x] Public standalone repository
 - [x] Legacy port/prefix contract preserved
-- [x] QR pairing + runtime status
+- [x] QR pairing + protected runtime status
 - [x] AI reply adapter
 - [x] Public secret/session denylist
+- [x] CI syntax/unit/security gate
 - [ ] Byte-for-byte comparison with the original `backend/systemAutowa` local directory (requires that local tree or a sanitized archive to be made accessible)
