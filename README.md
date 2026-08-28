@@ -1,8 +1,12 @@
 # CopyToLive Chat AI
 
+[![Open WhatsApp Scanner in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/copytolive/chat-ai?quickstart=1)
+
+**Want to scan and test immediately without a VPS?** Click the Codespaces badge above. The GitHub Codespace installs dependencies, starts the WhatsApp scanner, forwards port `3847`, and opens the scanner UI automatically. Keep the forwarded port private. See `GITHUB_SCAN.md` for the exact scan/test flow.
+
 Public, launch-hardened WhatsApp AI conversation-marketing service. It preserves the verified legacy `/wa-scanner/*` / port `3847` behavior and supports two launch paths:
 
-- **QR SCAN MODE** — open the console, scan once from an authorized WhatsApp account, persist the session under `/data/wa-auth`, then process/reply automatically and reconnect after restart.
+- **QR SCAN MODE** — open the console, scan once from an authorized WhatsApp account, persist the session under `/data/wa-auth` in Docker or `.auth/codespace/whatsapp` in Codespaces, then process/reply automatically and reconnect after restart.
 - **CLOUD MODE** — official WhatsApp Business Platform / Cloud API with signed webhooks, encrypted durable queueing and persistent idempotency.
 
 ## Launch architecture
@@ -16,6 +20,12 @@ Cloud mode:
 `WhatsApp Cloud API → signed webhook → encrypted durable queue/idempotency → staged marketing agent → verified knowledge → AI primary/fallback → reply or human handoff`
 
 The runtime is fail-closed. `/ready` returns HTTP 200 only when the active WhatsApp provider, AI, required marketing/knowledge configuration, human handoff path and automation switch are ready. Before a QR scan is completed, scan mode intentionally returns NOT READY. After pairing, it becomes CONNECTED and automatic message handling starts without another operator action.
+
+## GitHub-only scan/test
+
+For an interactive GitHub-hosted test, open `https://codespaces.new/copytolive/chat-ai?quickstart=1`. Codespaces uses the committed `.devcontainer/devcontainer.json` and `scripts/codespace-start.sh` to start a private forwarded scanner automatically. If production AI environment variables are not present, it uses the repository's local mock AI so the real WhatsApp receive → agent → reply path can be tested immediately. The linked-device session is ignored by Git and stays inside that Codespace.
+
+Codespaces is intentionally a scan/test path, not a 24/7 production host. Use the Docker scan profile on an always-on server or the official Cloud API for continuous production.
 
 ## QR scan launch — one scan, then auto-run
 
@@ -82,6 +92,8 @@ GitHub Actions runs three independent jobs:
 1. **test** — syntax/unit tests, deterministic 1,000-case conversation matrix, scan→connected→automatic-reply acceptance, persistent opt-out/handoff, hashed-at-rest state, encrypted local inbox, encrypted Cloud queue/idempotency, critical dependency audit, production-like Cloud stack and launch doctor.
 2. **browser** — real headless Chromium validates the Cloud console, then validates scan mode twice: before pairing it must display a real QR and `NOT READY`; after simulated pairing it must display `CONNECTED`, `AUTO-RUN ENABLED`, persistent `/data/wa-auth` and `LAUNCH READY`. DOM + PNG evidence are uploaded.
 3. **docker** — builds the production container image.
+
+The test job also validates the GitHub Codespaces dev-container JSON and scanner launcher shell syntax.
 
 See `RUNBOOK.md` for go-live/rollback operations and `SECURITY.md` for the security contract.
 
