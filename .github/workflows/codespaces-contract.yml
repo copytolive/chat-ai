@@ -32,7 +32,7 @@ jobs:
         run: |
           grep -q 'code --open-url' scripts/codespace-start.sh
           grep -q 'Scanner UI:' scripts/codespace-start.sh
-          grep -q 'scanner membuka halaman' docs/index.html || grep -q 'membuka /wa-scanner/' docs/index.html
+          grep -q '/wa-scanner/' docs/index.html
       - name: Validate public WA test contract
         run: |
           grep -q 'gh codespace ports visibility 3847:public' scripts/codespace-start.sh
