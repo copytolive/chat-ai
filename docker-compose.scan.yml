@@ -3,13 +3,15 @@ services:
     build: .
     restart: unless-stopped
     init: true
-    env_file: .env
+    env_file: .env.scan
     environment:
       HOST: 0.0.0.0
     ports:
       - "127.0.0.1:3847:3847"
     volumes:
-      - chat_ai_data:/data
+      - chat_ai_scan_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -24,4 +26,4 @@ services:
       retries: 3
       start_period: 15s
 volumes:
-  chat_ai_data:
+  chat_ai_scan_data:

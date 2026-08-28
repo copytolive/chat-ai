@@ -2,6 +2,17 @@ import http from 'node:http'
 
 const port = Number(process.env.MOCK_AI_PORT || 9999)
 const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/handoff') {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8')
+      console.log(`handoff:${req.headers['x-chat-ai-signature'] || 'unsigned'}:${body.slice(0,180)}`)
+      res.writeHead(204)
+      res.end()
+    })
+    return
+  }
   if (req.method !== 'POST' || !req.url.endsWith('/chat/completions')) { res.writeHead(404); return res.end() }
   const chunks = []
   req.on('data', (chunk) => chunks.push(chunk))

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title>CopyToLive Chat AI — Launch Console</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="shell">
@@ -20,12 +20,12 @@
       <article class="card status-card">
         <div class="card-head"><h2>Runtime</h2><span id="badge" class="badge">LOADING</span></div>
         <dl>
-          <div><dt>Provider</dt><dd id="wa-provider">—</dd></div><div><dt>WhatsApp</dt><dd id="wa-state">—</dd></div><div><dt>Automation</dt><dd id="automation-state">—</dd></div><div><dt>AI</dt><dd id="ai-state">—</dd></div><div><dt>Model</dt><dd id="ai-model">—</dd></div><div><dt>Fallback</dt><dd id="ai-fallback">—</dd></div><div><dt>Marketing</dt><dd id="marketing-state">—</dd></div><div><dt>Knowledge</dt><dd id="knowledge-state">—</dd></div><div><dt>Persistence</dt><dd id="persistence-state">—</dd></div>
+          <div><dt>Provider</dt><dd id="wa-provider">—</dd></div><div><dt>WhatsApp</dt><dd id="wa-state">—</dd></div><div><dt>Webhook queue</dt><dd id="queue-state">—</dd></div><div><dt>Automation</dt><dd id="automation-state">—</dd></div><div><dt>AI</dt><dd id="ai-state">—</dd></div><div><dt>Model</dt><dd id="ai-model">—</dd></div><div><dt>Fallback</dt><dd id="ai-fallback">—</dd></div><div><dt>Marketing</dt><dd id="marketing-state">—</dd></div><div><dt>Human handoff</dt><dd id="handoff-state">—</dd></div><div><dt>Knowledge</dt><dd id="knowledge-state">—</dd></div><div><dt>Persistence</dt><dd id="persistence-state">—</dd></div>
         </dl>
       </article>
       <article class="card qr-card">
         <h2>Channel</h2><div id="qr-wrap" class="qr-wrap"><div class="placeholder">Waiting for WhatsApp…</div></div>
-        <p id="qr-help" class="muted">Production should use the official WhatsApp Cloud API. QR pairing remains available for authorized Baileys development use.</p>
+        <p id="qr-help" class="muted">Production should use the official WhatsApp Cloud API. QR pairing remains available for authorized Baileys compatibility use.</p>
       </article>
     </section>
     <section class="metric-grid" aria-label="runtime metrics">
@@ -36,9 +36,9 @@
       <form id="preview-form" class="preview-form"><label>Session<input id="preview-session" value="demo" maxlength="80" autocomplete="off"></label><label>Prospect message<textarea id="preview-input" rows="3" maxlength="6000" placeholder="Contoh: Saya tertarik. Bisa jelaskan yang paling cocok untuk tim saya?"></textarea></label><button id="preview-submit" type="submit">Send to agent</button></form>
       <div id="preview-output" class="preview-output">Waiting for a test message.</div>
     </section>
-    <section class="card notes"><h2>Launch safety contract</h2><p>Official Cloud API for production, signed webhooks, inbound-first automation, persistent opt-out/handoff, verified-fact grounding, global kill switch, rate limiting, duplicate-message suppression, no bulk-send endpoint, protected admin/scanner surfaces, and a human takeover path.</p></section>
-    <footer><span id="last-updated">Not checked yet</span><a href="/health">health</a><a href="/ready">ready</a><a href="/status">status</a><a href="/metrics">metrics</a></footer>
+    <section class="card notes"><h2>Launch safety contract</h2><p>Official Cloud API or explicit QR compatibility mode, encrypted durable queues, inbound-first automation, persistent opt-out/handoff, verified-fact grounding, global kill switch, rate limiting, duplicate-message suppression, protected admin/scanner surfaces, and durable human takeover.</p></section>
+    <footer><span id="last-updated">Not checked yet</span><a href="./health">health</a><a href="./ready">ready</a><a href="./status">status</a><a href="./metrics">metrics</a></footer>
   </main>
-  <script src="/app.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>

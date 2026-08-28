@@ -31,6 +31,7 @@ jobs:
           PORT: 3847
           RELEASE_VERSION: ci
           AUTOMATION_ENABLED: 'true'
+          REQUIRE_HANDOFF_FOR_READY: 'true'
           WA_PROVIDER: cloud
           WA_CLOUD_ACCESS_TOKEN: test-token
           WA_CLOUD_PHONE_NUMBER_ID: '123456789'
@@ -38,6 +39,10 @@ jobs:
           WA_CLOUD_APP_SECRET: secret-ci
           WA_QUEUE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           WA_QUEUE_DIR: /tmp/chat-ai-ci-webhook-queue
+          HANDOFF_MODE: webhook
+          HANDOFF_WEBHOOK_URL: http://127.0.0.1:9999/handoff
+          HANDOFF_WEBHOOK_SECRET: handoff-ci-secret
+          HANDOFF_QUEUE_DIR: /tmp/chat-ai-ci-handoff-queue
           AI_ENABLED: 'true'
           AI_BASE_URL: http://127.0.0.1:9999/v1
           AI_MODEL: mock-primary
@@ -48,13 +53,13 @@ jobs:
           KNOWLEDGE_FACTS: Verified CI fact
           STATE_FILE: /tmp/chat-ai-ci-state.json
         run: |
-          rm -rf /tmp/chat-ai-ci-webhook-queue /tmp/chat-ai-ci-state.json
+          rm -rf /tmp/chat-ai-ci-webhook-queue /tmp/chat-ai-ci-handoff-queue /tmp/chat-ai-ci-state.json
           node scripts/mock-ai.mjs > /tmp/mock-ai.log 2>&1 &
           echo $! > /tmp/mock-ai.pid
           node src/index.js > /tmp/chat-ai.log 2>&1 &
           echo $! > /tmp/chat-ai.pid
           for i in {1..30}; do curl -fsS http://127.0.0.1:3847/health && break || sleep 1; done
-          curl -fsS http://127.0.0.1:3847/ready
+          curl -fsS http://127.0.0.1:3847/ready | grep '"handoff":true'
           curl -fsS 'http://127.0.0.1:3847/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-ci&hub.challenge=CI_OK' | grep CI_OK
           curl -fsS -H 'content-type: application/json' -d '{"sessionId":"ci","text":"Saya tertarik untuk tim saya"}' http://127.0.0.1:3847/marketing/preview | grep 'Mock validated reply'
           LAUNCH_BASE_URL=http://127.0.0.1:3847 node scripts/launch-doctor.mjs
@@ -69,26 +74,55 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Start browser fixture
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Start Cloud and QR-scan browser fixtures
         run: |
           node scripts/browser-harness.mjs > /tmp/browser-harness.log 2>&1 &
           echo $! > /tmp/browser-harness.pid
+          node scripts/browser-scan-harness.mjs > /tmp/browser-scan-harness.log 2>&1 &
+          echo $! > /tmp/browser-scan-harness.pid
           for i in {1..20}; do curl -fsS http://127.0.0.1:8765/status && break || sleep 1; done
-      - name: Chromium browser acceptance
+          for i in {1..20}; do curl -fsS http://127.0.0.1:8766/wa-scanner/status && break || sleep 1; done
+      - name: Chromium Cloud browser acceptance
         run: |
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
           test -n "$CHROME"
-          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1400 --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/ > browser-dom.html
-          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1400 --virtual-time-budget=5000 --screenshot=browser-launch.png http://127.0.0.1:8765/
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/ > browser-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=5000 --screenshot=browser-launch.png http://127.0.0.1:8765/
           grep -q 'LAUNCH READY' browser-dom.html
           grep -q 'Browser acceptance reply' browser-dom.html
           grep -q 'DISCOVERY · 42/100' browser-dom.html
+          grep -q 'ENCRYPTED · 0 PENDING' browser-dom.html
+          grep -q 'READY · LOCAL INBOX · ENCRYPTED' browser-dom.html
+          grep -q 'DURABLE JSON SINGLE INSTANCE HASHED CONTACT ID' browser-dom.html
+      - name: Chromium QR scan before-pair acceptance at legacy prefix
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=4000 --dump-dom http://127.0.0.1:8766/wa-scanner/ > browser-scan-qr-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=4000 --screenshot=browser-scan-qr.png http://127.0.0.1:8766/wa-scanner/
+          grep -q 'WhatsApp pairing QR code' browser-scan-qr-dom.html
+          grep -q 'NOT READY' browser-scan-qr-dom.html
+          grep -q 'AUTO-RUN ENABLED' browser-scan-qr-dom.html
+          grep -q 'SESSION PERSISTENT' browser-scan-qr-dom.html
+      - name: Chromium QR scan connected auto-run acceptance at legacy prefix
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8766/wa-scanner/simulate-scan | grep '"connected":true'
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$CHROME" --headless --no-sandbox --disable-gpu --window-size=1440,1600 --virtual-time-budget=4000 --dump-dom http://127.0.0.1:8766/wa-scanner/ > browser-scan-connected-dom.html
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --window-size=1440,1600 --virtual-time-budget=4000 --screenshot=browser-scan-connected.png http://127.0.0.1:8766/wa-scanner/
+          grep -q 'LAUNCH READY' browser-scan-connected-dom.html
+          grep -q 'CONNECTED' browser-scan-connected-dom.html
+          grep -q 'AUTO-RUN ENABLED' browser-scan-connected-dom.html
+          grep -q 'Connected · Auto-run' browser-scan-connected-dom.html
+          grep -q 'WA /data/wa-auth' browser-scan-connected-dom.html
       - name: Upload browser evidence
         uses: actions/upload-artifact@v4
         with:
@@ -96,12 +130,49 @@ jobs:
           path: |
             browser-dom.html
             browser-launch.png
+            browser-scan-qr-dom.html
+            browser-scan-qr.png
+            browser-scan-connected-dom.html
+            browser-scan-connected.png
             /tmp/browser-harness.log
+            /tmp/browser-scan-harness.log
 
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Validate Compose launch profiles
+        run: |
+          cp .env.example .env
+          cp .env.scan.example .env.scan
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.scan.yml config >/dev/null
       - name: Build production image
         run: docker build --pull -t copytolive/chat-ai:${{ github.sha }} .
+      - name: Verify container is reachable through published loopback port
+        run: |
+          docker volume create chat_ai_smoke >/dev/null
+          docker run -d --name chat-ai-smoke \
+            -p 127.0.0.1:3850:3847 \
+            -v chat_ai_smoke:/data \
+            -e HOST=0.0.0.0 \
+            -e PORT=3847 \
+            -e SCANNER_TOKEN=smoke-token \
+            -e NODE_ENV=production \
+            -e WA_PROVIDER=cloud \
+            -e WA_CLOUD_ACCESS_TOKEN=test-token \
+            -e WA_CLOUD_PHONE_NUMBER_ID=123456789 \
+            -e WA_CLOUD_VERIFY_TOKEN=verify \
+            -e WA_CLOUD_APP_SECRET=secret \
+            -e WA_QUEUE_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            -e HANDOFF_MODE=local \
+            -e AI_ENABLED=false \
+            -e MARKETING_ENABLED=false \
+            -e REQUIRE_MARKETING_FOR_READY=false \
+            -e REQUIRE_HANDOFF_FOR_READY=false \
+            copytolive/chat-ai:${{ github.sha }}
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3850/health && break || sleep 1; done
+          curl -fsS http://127.0.0.1:3850/health | grep '"ok":true'
+          docker rm -f chat-ai-smoke >/dev/null
+          docker volume rm chat_ai_smoke >/dev/null

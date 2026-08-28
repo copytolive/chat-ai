@@ -1,0 +1,17 @@
+copytolive.com {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+
+  redir /wa-scanner /wa-scanner/ 308
+
+  # chat-ai natively understands the /wa-scanner/* prefix.
+  # Keep the prefix when proxying; no rewrite/strip is required.
+  handle /wa-scanner/* {
+    reverse_proxy 127.0.0.1:3847
+  }
+}
